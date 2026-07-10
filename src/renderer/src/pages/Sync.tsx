@@ -82,6 +82,22 @@ export function SyncPage(): React.JSX.Element {
     return `${progress.playlistName}: ${phaseLabel}${track}`
   }, [progress])
 
+  const overallProgress = useMemo(() => {
+    if (!progress || progress.playlistTotal <= 1) return null
+    const completed = Math.max(0, progress.playlistIndex - 1)
+    const trackFraction =
+      progress.phase === 'done'
+        ? 1
+        : progress.total > 0
+          ? Math.min(1, Math.max(0, progress.current / progress.total))
+          : 0
+    return {
+      label: `Playlist ${progress.playlistIndex} of ${progress.playlistTotal}`,
+      value: completed + trackFraction,
+      max: progress.playlistTotal
+    }
+  }, [progress])
+
   const runSync = async (): Promise<void> => {
     if (running) return
     setRunning(true)
@@ -148,6 +164,13 @@ export function SyncPage(): React.JSX.Element {
 
       {progress ? (
         <section className="card">
+          {overallProgress ? (
+            <ProgressBar
+              value={overallProgress.value}
+              max={overallProgress.max}
+              label={overallProgress.label}
+            />
+          ) : null}
           <ProgressBar
             value={progress.current}
             max={Math.max(progress.total, 1)}

@@ -232,10 +232,21 @@ export class SyncService {
 
       mkdirSync(config.musicRoot, { recursive: true })
 
-      for (const playlistId of targets) {
+      const playlistTotal = targets.length
+      for (let i = 0; i < targets.length; i++) {
+        const playlistId = targets[i]
+        const playlistIndex = i + 1
         this.assertNotStopped(summary)
         try {
-          await this.syncPlaylist(playlistId, config.musicRoot, config.downloadQuality, emit, summary)
+          await this.syncPlaylist(
+            playlistId,
+            config.musicRoot,
+            config.downloadQuality,
+            emit,
+            summary,
+            playlistIndex,
+            playlistTotal
+          )
           summary.playlists++
         } catch (err) {
           if (err instanceof SyncStoppedError) throw err
@@ -261,14 +272,18 @@ export class SyncService {
     musicRoot: string,
     quality: string,
     emit: SyncEventEmitter,
-    summary: SyncSummary
+    summary: SyncSummary,
+    playlistIndex: number,
+    playlistTotal: number
   ): Promise<void> {
     emit.onProgress({
       playlistId,
       playlistName: playlistId,
       phase: 'fetching',
       current: 0,
-      total: 0
+      total: 0,
+      playlistIndex,
+      playlistTotal
     })
 
     const remote = await ytmusicService.getPlaylistTracks(playlistId)
@@ -319,7 +334,9 @@ export class SyncService {
         phase,
         current: workCurrent,
         total: workTotal,
-        currentTrack
+        currentTrack,
+        playlistIndex,
+        playlistTotal
       })
     }
 
@@ -454,7 +471,9 @@ export class SyncService {
       playlistName: remote.name,
       phase: 'done',
       current: workTotal,
-      total: workTotal
+      total: workTotal,
+      playlistIndex,
+      playlistTotal
     })
 
     emit.onLog({

@@ -39,15 +39,11 @@ function setTaskbarDeterminate(window: BrowserWindow | null, value: number): voi
   window.setProgressBar(clamped, { mode: 'normal' })
 }
 
-function updateTaskbarProgress(
-  window: BrowserWindow | null,
-  progress: SyncProgress,
-  playlistCount: number,
-  completedPlaylists: number
-): void {
+function updateTaskbarProgress(window: BrowserWindow | null, progress: SyncProgress): void {
   if (!window || window.isDestroyed()) return
 
-  const count = Math.max(playlistCount, 1)
+  const count = Math.max(progress.playlistTotal, 1)
+  const completedPlaylists = Math.max(0, progress.playlistIndex - 1)
 
   if (progress.phase === 'fetching' || (progress.total <= 0 && progress.phase !== 'done')) {
     setTaskbarIndeterminate(window)
@@ -66,15 +62,10 @@ async function executeSync(playlistIds?: string[]): Promise<SyncSummary> {
   }
 
   const window = getMainWindow()
-  const playlistCount = playlistIds?.length ?? database.getConfig().selectedPlaylists.length
-  let completedPlaylists = 0
   logger.startSyncSession(playlistIds)
 
   const sendProgress = (progress: SyncProgress): void => {
-    updateTaskbarProgress(window, progress, playlistCount, completedPlaylists)
-    if (progress.phase === 'done') {
-      completedPlaylists++
-    }
+    updateTaskbarProgress(window, progress)
     window?.webContents.send(IPC.SYNC_PROGRESS, progress)
   }
   const sendLog = (entry: SyncLogEntry): void => {

@@ -10,7 +10,7 @@ import { database } from '../services/database'
 import { downloaderService } from '../services/downloader'
 import { logger } from '../services/logger'
 import { getLogsDir, getPlaylistFolder } from '../services/paths'
-import { syncService } from '../services/sync'
+import { syncService, SyncStoppedError } from '../services/sync'
 import {
   checkForAppUpdates,
   downloadAppUpdate,
@@ -91,22 +91,25 @@ async function executeSync(playlistIds?: string[]): Promise<SyncSummary> {
     window?.webContents.send(IPC.SYNC_DONE, summary)
     return summary
   } catch (err) {
-    const summary: SyncSummary = {
-      downloaded: 0,
-      deleted: 0,
-      skipped: 0,
-      errors: 1,
-      playlists: 0
-    }
+    const stopped = err instanceof SyncStoppedError
+    const summary: SyncSummary = stopped
+      ? err.summary
+      : {
+          downloaded: 0,
+          deleted: 0,
+          skipped: 0,
+          errors: 1,
+          playlists: 0
+        }
     if (window && !window.isDestroyed()) {
-      window.setProgressBar(1, { mode: 'error' })
+      window.setProgressBar(1, { mode: stopped ? 'paused' : 'error' })
     }
     sendLog({
-      level: 'error',
+      level: stopped ? 'warning' : 'error',
       message: err instanceof Error ? err.message : 'Sync failed',
       timestamp: new Date().toISOString()
     })
-    logger.finishSyncSession(summary, true)
+    logger.finishSyncSession(summary, !stopped)
     window?.webContents.send(IPC.SYNC_DONE, summary)
     throw err
   } finally {
@@ -248,4 +251,8 @@ export function registerIpcHandlers(): void {
   })
 
   ipcMain.handle(IPC.SYNC_RUN, async () => executeSync())
+
+  ipcMain.handle(IPC.SYNC_STOP, () => ({ stopped: syncService.stop() }))
+
+  ipcMain.handle(IPC.SYNC_IS_RUNNING, () => syncService.isRunning())
 }

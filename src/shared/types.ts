@@ -79,6 +79,7 @@ export interface SyncSummary {
   skipped: number
   errors: number
   playlists: number
+  stopped?: boolean
 }
 
 export interface AuthStatus {

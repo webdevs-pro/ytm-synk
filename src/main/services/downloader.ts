@@ -1,10 +1,31 @@
-import { spawn } from 'child_process'
+import { type ChildProcess, spawn } from 'child_process'
 import { existsSync, readdirSync, statSync, unlinkSync } from 'fs'
 import { join, normalize } from 'path'
 import type { DownloaderInfo } from '../../shared/types'
 import { refreshYtDlpCookiesFile } from './cookies'
 import { resolveJsRuntime } from './jsRuntime'
 import { getCookiesPath, getFfmpegPath, getYtDlpPath } from './paths'
+
+export class DownloadCancelledError extends Error {
+  constructor(message = 'Download cancelled') {
+    super(message)
+    this.name = 'DownloadCancelledError'
+  }
+}
+
+function killProcessTree(proc: ChildProcess): void {
+  if (!proc.pid || proc.killed) return
+
+  if (process.platform === 'win32') {
+    spawn('taskkill', ['/pid', String(proc.pid), '/T', '/F'], {
+      windowsHide: true,
+      stdio: 'ignore'
+    })
+    return
+  }
+
+  proc.kill('SIGTERM')
+}
 
 export interface DownloadOptions {
   videoId: string
@@ -113,6 +134,9 @@ function prepareOutputPath(outputDir: string, outputTemplate: string): {
 }
 
 export class DownloaderService {
+  private activeProcess: ChildProcess | null = null
+  private cancelRequested = false
+
   getInfo(): DownloaderInfo {
     const ytdlpPath = getYtDlpPath()
     const ffmpegPath = getFfmpegPath()
@@ -124,6 +148,13 @@ export class DownloaderService {
       ffmpegExists: existsSync(ffmpegPath),
       jsRuntimeKind: jsRuntime?.kind ?? null,
       jsRuntimeExists: Boolean(jsRuntime)
+    }
+  }
+
+  cancel(): void {
+    this.cancelRequested = true
+    if (this.activeProcess) {
+      killProcessTree(this.activeProcess)
     }
   }
 
@@ -142,12 +173,17 @@ export class DownloaderService {
   }
 
   async download(options: DownloadOptions): Promise<DownloadResult> {
+    this.cancelRequested = false
+
     const info = this.getInfo()
     if (!info.ytdlpExists) {
       throw new Error(`yt-dlp not found at ${info.ytdlpPath}. Run npm run download-binaries.`)
     }
 
     await refreshYtDlpCookiesFile()
+    if (this.cancelRequested) {
+      throw new DownloadCancelledError()
+    }
 
     const jsRuntime = resolveJsRuntime()
     if (!jsRuntime) {
@@ -190,8 +226,23 @@ export class DownloaderService {
     const startedAtMs = Date.now()
     const filePath = await new Promise<string>((resolve, reject) => {
       const proc = spawn(info.ytdlpPath, args, { windowsHide: true })
+      this.activeProcess = proc
       let stdout = ''
       let stderr = ''
+      let settled = false
+
+      const settle = (fn: () => void): void => {
+        if (settled) return
+        settled = true
+        if (this.activeProcess === proc) {
+          this.activeProcess = null
+        }
+        fn()
+      }
+
+      if (this.cancelRequested) {
+        killProcessTree(proc)
+      }
 
       proc.stdout.on('data', (chunk: Buffer) => {
         stdout += chunk.toString()
@@ -206,26 +257,41 @@ export class DownloaderService {
         }
       })
 
-      proc.on('error', (err) => reject(err))
+      proc.on('error', (err) => {
+        settle(() => {
+          if (this.cancelRequested) {
+            reject(new DownloadCancelledError())
+            return
+          }
+          reject(err)
+        })
+      })
       proc.on('close', (code) => {
-        if (code !== 0) {
-          reject(new Error(stderr.trim() || `yt-dlp exited with code ${code}`))
-          return
-        }
+        settle(() => {
+          if (this.cancelRequested || code === null) {
+            reject(new DownloadCancelledError())
+            return
+          }
 
-        const resolved = resolveDownloadedFilePath(
-          stdout,
-          stderr,
-          prepared.outputDir,
-          prepared.expectedFileName,
-          startedAtMs
-        )
-        if (resolved) {
-          resolve(resolved)
-          return
-        }
+          if (code !== 0) {
+            reject(new Error(stderr.trim() || `yt-dlp exited with code ${code}`))
+            return
+          }
 
-        reject(new Error('Download finished but output file was not found'))
+          const resolved = resolveDownloadedFilePath(
+            stdout,
+            stderr,
+            prepared.outputDir,
+            prepared.expectedFileName,
+            startedAtMs
+          )
+          if (resolved) {
+            resolve(resolved)
+            return
+          }
+
+          reject(new Error('Download finished but output file was not found'))
+        })
       })
     })
 

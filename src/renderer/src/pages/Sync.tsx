@@ -9,10 +9,19 @@ interface LogItem {
   level: string
 }
 
+function isSyncStoppedMessage(message: string): boolean {
+  return /sync stopped/i.test(message)
+}
+
+function isAlreadyRunningMessage(message: string): boolean {
+  return /already running/i.test(message)
+}
+
 export function SyncPage(): React.JSX.Element {
   const { toast } = useToast()
   const [auth, setAuth] = useState<{ isAuthenticated: boolean } | null>(null)
   const [running, setRunning] = useState(false)
+  const [stopping, setStopping] = useState(false)
   const [progress, setProgress] = useState<SyncProgress | null>(null)
   const [logs, setLogs] = useState<LogItem[]>([])
   const [summary, setSummary] = useState<SyncSummary | null>(null)
@@ -20,10 +29,14 @@ export function SyncPage(): React.JSX.Element {
 
   useEffect(() => {
     void window.api.auth.status().then(setAuth)
+    void window.api.sync.isRunning().then(setRunning)
   }, [])
 
   useEffect(() => {
-    const unsubProgress = window.api.sync.onProgress((entry: SyncProgress) => setProgress(entry))
+    const unsubProgress = window.api.sync.onProgress((entry: SyncProgress) => {
+      setRunning(true)
+      setProgress(entry)
+    })
     const unsubLog = window.api.sync.onLog((entry: SyncLogEntry) => {
       setLogs((current) => [
         ...current,
@@ -35,8 +48,17 @@ export function SyncPage(): React.JSX.Element {
       ])
     })
     const unsubDone = window.api.sync.onDone((result: SyncSummary) => {
-      setSummary(result)
+      setSummary(result.stopped ? null : result)
       setRunning(false)
+      setStopping(false)
+      if (result.stopped) {
+        setError(null)
+        toast({
+          title: 'Sync stopped',
+          description: 'Synchronization was cancelled.',
+          variant: 'info'
+        })
+      }
     })
 
     return () => {
@@ -44,7 +66,7 @@ export function SyncPage(): React.JSX.Element {
       unsubLog()
       unsubDone()
     }
-  }, [])
+  }, [toast])
 
   const progressLabel = useMemo(() => {
     if (!progress) return undefined
@@ -61,7 +83,9 @@ export function SyncPage(): React.JSX.Element {
   }, [progress])
 
   const runSync = async (): Promise<void> => {
+    if (running) return
     setRunning(true)
+    setStopping(false)
     setError(null)
     setSummary(null)
     setLogs([])
@@ -71,10 +95,33 @@ export function SyncPage(): React.JSX.Element {
       setSummary(result)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Sync failed'
+      if (isAlreadyRunningMessage(message)) {
+        setRunning(true)
+        setError(null)
+        return
+      }
+      if (isSyncStoppedMessage(message)) {
+        setError(null)
+        return
+      }
       setError(message)
       toast({ title: 'Sync failed', description: message, variant: 'error' })
     } finally {
-      setRunning(false)
+      const stillRunning = await window.api.sync.isRunning()
+      setRunning(stillRunning)
+      if (!stillRunning) setStopping(false)
+    }
+  }
+
+  const stopSync = async (): Promise<void> => {
+    if (!running || stopping) return
+    setStopping(true)
+    try {
+      await window.api.sync.stop()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to stop sync'
+      setStopping(false)
+      toast({ title: 'Could not stop sync', description: message, variant: 'error' })
     }
   }
 
@@ -82,9 +129,15 @@ export function SyncPage(): React.JSX.Element {
     <div className="page page-sync">
       <div className="page-header">
         <h2>Sync</h2>
-        <button disabled={running || !auth?.isAuthenticated} onClick={() => void runSync()}>
-          {running ? 'Syncing...' : 'Sync now'}
-        </button>
+        {running ? (
+          <button className="button-danger" disabled={stopping} onClick={() => void stopSync()}>
+            {stopping ? 'Stopping...' : 'Stop'}
+          </button>
+        ) : (
+          <button disabled={!auth?.isAuthenticated} onClick={() => void runSync()}>
+            Sync now
+          </button>
+        )}
       </div>
 
       {!auth?.isAuthenticated ? (

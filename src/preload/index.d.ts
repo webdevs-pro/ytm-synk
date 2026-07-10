@@ -21,6 +21,8 @@ export interface YtmApi {
   }
   sync: {
     run: () => Promise<SyncSummary>
+    stop: () => Promise<{ stopped: boolean }>
+    isRunning: () => Promise<boolean>
     onProgress: (callback: (progress: SyncProgress) => void) => () => void
     onLog: (callback: (entry: SyncLogEntry) => void) => () => void
     onDone: (callback: (summary: SyncSummary) => void) => () => void

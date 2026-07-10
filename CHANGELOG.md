@@ -5,6 +5,12 @@ All notable changes to YTM-Synk are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-07-10
+
+### Added
+
+- Overall playlist progress on the Sync page when syncing multiple playlists (Playlist N of M), alongside per-playlist track progress
+
 ## [1.2.4] - 2026-07-10
 
 ### Added

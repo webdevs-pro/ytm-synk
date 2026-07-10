@@ -67,6 +67,10 @@ button:disabled {
   padding: 1.5rem;
 }
 
+.tab-panel.hidden {
+  display: none;
+}
+
 .tabs {
   display: flex;
   gap: 0.5rem;
@@ -161,6 +165,18 @@ button:disabled {
   align-items: flex-start;
   flex: 1;
   cursor: pointer;
+}
+
+.playlist-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.playlist-sync-status {
+  margin-top: 0.35rem;
+  font-size: 0.85rem;
+  color: #d7e3ff;
 }
 
 .button-danger {

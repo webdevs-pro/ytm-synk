@@ -60,6 +60,63 @@ function updateTaskbarProgress(
   window.setProgressBar(Math.min(1, Math.max(0, overall)))
 }
 
+async function executeSync(playlistIds?: string[]): Promise<SyncSummary> {
+  if (syncService.isRunning()) {
+    throw new Error('Sync is already running')
+  }
+
+  const window = getMainWindow()
+  const playlistCount = playlistIds?.length ?? database.getConfig().selectedPlaylists.length
+  let completedPlaylists = 0
+
+  const sendProgress = (progress: SyncProgress): void => {
+    updateTaskbarProgress(window, progress, playlistCount, completedPlaylists)
+    if (progress.phase === 'done') {
+      completedPlaylists++
+    }
+    window?.webContents.send(IPC.SYNC_PROGRESS, progress)
+  }
+  const sendLog = (entry: SyncLogEntry): void => {
+    window?.webContents.send(IPC.SYNC_LOG, entry)
+  }
+
+  updateTaskbarProgress(
+    window,
+    {
+      playlistId: '',
+      playlistName: '',
+      phase: 'fetching',
+      current: 0,
+      total: 0
+    },
+    playlistCount,
+    0
+  )
+
+  try {
+    const summary = await syncService.run({ onProgress: sendProgress, onLog: sendLog }, playlistIds)
+    window?.webContents.send(IPC.SYNC_DONE, summary)
+    return summary
+  } catch (err) {
+    const summary: SyncSummary = {
+      downloaded: 0,
+      deleted: 0,
+      skipped: 0,
+      errors: 1,
+      playlists: 0
+    }
+    sendLog({
+      level: 'error',
+      message: err instanceof Error ? err.message : 'Sync failed',
+      timestamp: new Date().toISOString()
+    })
+    window?.webContents.send(IPC.SYNC_DONE, summary)
+    throw err
+  } finally {
+    clearTaskbarProgress(window)
+  }
+}
+
 export function registerIpcHandlers(): void {
   ipcMain.handle(IPC.AUTH_STATUS, () => authService.getStatus())
 
@@ -109,6 +166,8 @@ export function registerIpcHandlers(): void {
     }
   )
 
+  ipcMain.handle(IPC.PLAYLISTS_SYNC, async (_event, playlistId: string) => executeSync([playlistId]))
+
   ipcMain.handle(IPC.SETTINGS_GET, () => database.getConfig())
 
   ipcMain.handle(IPC.SETTINGS_SET, (_event, partial: Partial<AppConfig>) =>
@@ -153,60 +212,5 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  ipcMain.handle(IPC.SYNC_RUN, async () => {
-    if (syncService.isRunning()) {
-      throw new Error('Sync is already running')
-    }
-
-    const window = getMainWindow()
-    const playlistCount = database.getConfig().selectedPlaylists.length
-    let completedPlaylists = 0
-
-    const sendProgress = (progress: SyncProgress): void => {
-      updateTaskbarProgress(window, progress, playlistCount, completedPlaylists)
-      if (progress.phase === 'done') {
-        completedPlaylists++
-      }
-      window?.webContents.send(IPC.SYNC_PROGRESS, progress)
-    }
-    const sendLog = (entry: SyncLogEntry): void => {
-      window?.webContents.send(IPC.SYNC_LOG, entry)
-    }
-
-    updateTaskbarProgress(
-      window,
-      {
-        playlistId: '',
-        playlistName: '',
-        phase: 'fetching',
-        current: 0,
-        total: 0
-      },
-      playlistCount,
-      0
-    )
-
-    try {
-      const summary = await syncService.run({ onProgress: sendProgress, onLog: sendLog })
-      window?.webContents.send(IPC.SYNC_DONE, summary)
-      return summary
-    } catch (err) {
-      const summary: SyncSummary = {
-        downloaded: 0,
-        deleted: 0,
-        skipped: 0,
-        errors: 1,
-        playlists: 0
-      }
-      sendLog({
-        level: 'error',
-        message: err instanceof Error ? err.message : 'Sync failed',
-        timestamp: new Date().toISOString()
-      })
-      window?.webContents.send(IPC.SYNC_DONE, summary)
-      throw err
-    } finally {
-      clearTaskbarProgress(window)
-    }
-  })
+  ipcMain.handle(IPC.SYNC_RUN, async () => executeSync())
 }

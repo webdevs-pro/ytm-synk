@@ -16,7 +16,8 @@ const api: YtmApi = {
     toggle: (playlistId, selected) => ipcRenderer.invoke(IPC.PLAYLISTS_TOGGLE, playlistId, selected),
     add: (input) => ipcRenderer.invoke(IPC.PLAYLISTS_ADD, input),
     remove: (playlistId, deleteFolder) =>
-      ipcRenderer.invoke(IPC.PLAYLISTS_REMOVE, playlistId, deleteFolder)
+      ipcRenderer.invoke(IPC.PLAYLISTS_REMOVE, playlistId, deleteFolder),
+    sync: (playlistId) => ipcRenderer.invoke(IPC.PLAYLISTS_SYNC, playlistId)
   },
   sync: {
     run: () => ipcRenderer.invoke(IPC.SYNC_RUN),

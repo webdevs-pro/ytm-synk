@@ -17,6 +17,7 @@ export interface YtmApi {
     toggle: (playlistId: string, selected: boolean) => Promise<AppConfig>
     add: (input: string) => Promise<PlaylistSummary>
     remove: (playlistId: string, deleteFolder: boolean) => Promise<{ success: boolean }>
+    sync: (playlistId: string) => Promise<SyncSummary>
   }
   sync: {
     run: () => Promise<SyncSummary>

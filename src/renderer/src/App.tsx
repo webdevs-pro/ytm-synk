@@ -29,9 +29,15 @@ function App(): React.JSX.Element {
       </header>
 
       <main className="app-main">
-        {tab === 'playlists' ? <PlaylistsPage /> : null}
-        {tab === 'sync' ? <SyncPage /> : null}
-        {tab === 'settings' ? <SettingsPage /> : null}
+        <div className={tab === 'playlists' ? 'tab-panel' : 'tab-panel hidden'}>
+          <PlaylistsPage />
+        </div>
+        <div className={tab === 'sync' ? 'tab-panel' : 'tab-panel hidden'}>
+          <SyncPage />
+        </div>
+        <div className={tab === 'settings' ? 'tab-panel' : 'tab-panel hidden'}>
+          <SettingsPage />
+        </div>
       </main>
     </div>
   )

@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import type { PlaylistSummary } from '../../../shared/types'
+import { useEffect, useRef, useState } from 'react'
+import type { PlaylistSummary, SyncProgress } from '../../../shared/types'
 
 export function PlaylistsPage(): React.JSX.Element {
   const [playlists, setPlaylists] = useState<PlaylistSummary[]>([])
@@ -10,6 +10,10 @@ export function PlaylistsPage(): React.JSX.Element {
   const [removeTarget, setRemoveTarget] = useState<PlaylistSummary | null>(null)
   const [deleteFolder, setDeleteFolder] = useState(false)
   const [removing, setRemoving] = useState(false)
+  const [auth, setAuth] = useState<{ isAuthenticated: boolean } | null>(null)
+  const [syncingId, setSyncingId] = useState<string | null>(null)
+  const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null)
+  const syncingIdRef = useRef<string | null>(null)
 
   const load = async (): Promise<void> => {
     setLoading(true)
@@ -26,6 +30,29 @@ export function PlaylistsPage(): React.JSX.Element {
 
   useEffect(() => {
     void load()
+    void window.api.auth.status().then(setAuth)
+  }, [])
+
+  useEffect(() => {
+    syncingIdRef.current = syncingId
+  }, [syncingId])
+
+  useEffect(() => {
+    const unsubProgress = window.api.sync.onProgress((progress) => {
+      if (progress.playlistId === syncingIdRef.current) {
+        setSyncProgress(progress)
+      }
+    })
+    const unsubDone = window.api.sync.onDone(() => {
+      setSyncingId(null)
+      setSyncProgress(null)
+      void load()
+    })
+
+    return () => {
+      unsubProgress()
+      unsubDone()
+    }
   }, [])
 
   const toggle = async (playlist: PlaylistSummary): Promise<void> => {
@@ -58,6 +85,19 @@ export function PlaylistsPage(): React.JSX.Element {
     }
   }
 
+  const syncPlaylist = async (playlist: PlaylistSummary): Promise<void> => {
+    setError(null)
+    setSyncProgress(null)
+    setSyncingId(playlist.id)
+    try {
+      await window.api.playlists.sync(playlist.id)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to sync playlist')
+      setSyncingId(null)
+      setSyncProgress(null)
+    }
+  }
+
   const openRemoveDialog = (playlist: PlaylistSummary): void => {
     setRemoveTarget(playlist)
     setDeleteFolder(false)
@@ -83,6 +123,19 @@ export function PlaylistsPage(): React.JSX.Element {
     } finally {
       setRemoving(false)
     }
+  }
+
+  const syncStatusLabel = (playlistId: string): string | null => {
+    if (syncingId !== playlistId || !syncProgress) return null
+    if (syncProgress.phase === 'fetching') return 'Fetching playlist...'
+    if (syncProgress.phase === 'deleting') {
+      return `Removing deleted tracks (${syncProgress.current}/${syncProgress.total})...`
+    }
+    if (syncProgress.phase === 'downloading') {
+      const track = syncProgress.currentTrack ? ` · ${syncProgress.currentTrack}` : ''
+      return `Downloading (${syncProgress.current}/${syncProgress.total})${track}`
+    }
+    return 'Finishing...'
   }
 
   if (loading) return <div className="page">Loading playlists...</div>
@@ -114,6 +167,10 @@ export function PlaylistsPage(): React.JSX.Element {
         </div>
       </section>
 
+      {!auth?.isAuthenticated ? (
+        <div className="banner">Sign in on the Settings page before syncing.</div>
+      ) : null}
+
       {error ? <div className="banner error">{error}</div> : null}
 
       {playlists.length === 0 ? (
@@ -123,33 +180,50 @@ export function PlaylistsPage(): React.JSX.Element {
         </div>
       ) : (
         <div className="playlist-grid">
-          {playlists.map((playlist) => (
-            <div key={playlist.id} className="playlist-card">
-              <label className="playlist-select">
-                <input
-                  type="checkbox"
-                  checked={playlist.selected}
-                  onChange={() => void toggle(playlist)}
-                />
-                <div>
-                  <div className="playlist-title">{playlist.title}</div>
-                  <div className="muted">
-                    {playlist.count} tracks
-                    {playlist.lastSyncedAt
-                      ? ` · last synced ${new Date(playlist.lastSyncedAt).toLocaleString()}`
-                      : ''}
+          {playlists.map((playlist) => {
+            const status = syncStatusLabel(playlist.id)
+            const isSyncing = syncingId === playlist.id
+
+            return (
+              <div key={playlist.id} className="playlist-card">
+                <label className="playlist-select">
+                  <input
+                    type="checkbox"
+                    checked={playlist.selected}
+                    disabled={Boolean(syncingId)}
+                    onChange={() => void toggle(playlist)}
+                  />
+                  <div>
+                    <div className="playlist-title">{playlist.title}</div>
+                    <div className="muted">
+                      {playlist.count} tracks
+                      {playlist.lastSyncedAt
+                        ? ` · last synced ${new Date(playlist.lastSyncedAt).toLocaleString()}`
+                        : ''}
+                    </div>
+                    {status ? <div className="playlist-sync-status">{status}</div> : null}
                   </div>
+                </label>
+                <div className="playlist-actions">
+                  <button
+                    type="button"
+                    disabled={!auth?.isAuthenticated || Boolean(syncingId)}
+                    onClick={() => void syncPlaylist(playlist)}
+                  >
+                    {isSyncing ? 'Syncing...' : 'Sync'}
+                  </button>
+                  <button
+                    type="button"
+                    className="button-danger"
+                    disabled={Boolean(syncingId)}
+                    onClick={() => openRemoveDialog(playlist)}
+                  >
+                    Remove
+                  </button>
                 </div>
-              </label>
-              <button
-                type="button"
-                className="button-danger"
-                onClick={() => openRemoveDialog(playlist)}
-              >
-                Remove
-              </button>
-            </div>
-          ))}
+              </div>
+            )
+          })}
         </div>
       )}
 

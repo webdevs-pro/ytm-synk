@@ -7,6 +7,7 @@ export const IPC = {
   PLAYLISTS_TOGGLE: 'playlists:toggle',
   PLAYLISTS_ADD: 'playlists:add',
   PLAYLISTS_REMOVE: 'playlists:remove',
+  PLAYLISTS_SYNC: 'playlists:sync',
   SYNC_RUN: 'sync:run',
   SYNC_PROGRESS: 'sync:progress',
   SYNC_LOG: 'sync:log',

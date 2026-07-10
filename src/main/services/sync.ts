@@ -171,7 +171,7 @@ export class SyncService {
     return this.running
   }
 
-  async run(emit: SyncEventEmitter): Promise<SyncSummary> {
+  async run(emit: SyncEventEmitter, playlistIds?: string[]): Promise<SyncSummary> {
     if (this.running) {
       throw new Error('Sync is already running')
     }
@@ -190,13 +190,19 @@ export class SyncService {
       if (!config.musicRoot) {
         throw new Error('Music folder is not configured. Open Settings and choose a folder.')
       }
-      if (config.selectedPlaylists.length === 0) {
-        throw new Error('No playlists selected. Choose playlists to mirror first.')
+
+      const targets = playlistIds ?? config.selectedPlaylists
+      if (targets.length === 0) {
+        throw new Error(
+          playlistIds
+            ? 'No playlist specified.'
+            : 'No playlists selected. Choose playlists to mirror first.'
+        )
       }
 
       mkdirSync(config.musicRoot, { recursive: true })
 
-      for (const playlistId of config.selectedPlaylists) {
+      for (const playlistId of targets) {
         try {
           await this.syncPlaylist(playlistId, config.musicRoot, config.downloadQuality, emit, summary)
           summary.playlists++

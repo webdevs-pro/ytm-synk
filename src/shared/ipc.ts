@@ -1,0 +1,21 @@
+export const IPC = {
+  AUTH_LOGIN: 'auth:login',
+  AUTH_LOGOUT: 'auth:logout',
+  AUTH_STATUS: 'auth:status',
+  AUTH_IMPORT_COOKIES: 'auth:import-cookies',
+  PLAYLISTS_LIST: 'playlists:list',
+  PLAYLISTS_TOGGLE: 'playlists:toggle',
+  PLAYLISTS_ADD: 'playlists:add',
+  PLAYLISTS_REMOVE: 'playlists:remove',
+  SYNC_RUN: 'sync:run',
+  SYNC_PROGRESS: 'sync:progress',
+  SYNC_LOG: 'sync:log',
+  SYNC_DONE: 'sync:done',
+  SETTINGS_GET: 'settings:get',
+  SETTINGS_SET: 'settings:set',
+  SETTINGS_PICK_MUSIC_ROOT: 'settings:pick-music-root',
+  SETTINGS_PICK_COOKIES_FILE: 'settings:pick-cookies-file',
+  SETTINGS_OPEN_LOGS: 'settings:open-logs',
+  DOWNLOADER_INFO: 'downloader:info',
+  DOWNLOADER_UPDATE: 'downloader:update'
+} as const

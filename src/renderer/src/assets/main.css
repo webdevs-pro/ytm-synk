@@ -11,10 +11,17 @@
   box-sizing: border-box;
 }
 
-body {
+html,
+body,
+#root {
+  height: 100%;
   margin: 0;
+  overflow: hidden;
+}
+
+body {
   min-width: 320px;
-  min-height: 100vh;
+  min-height: 100%;
   background: #111318;
 }
 
@@ -42,9 +49,10 @@ button:disabled {
 }
 
 .app-shell {
-  min-height: 100vh;
+  height: 100%;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .app-header {
@@ -55,6 +63,7 @@ button:disabled {
   padding: 1.25rem 1.5rem;
   border-bottom: 1px solid #2a2f3a;
   background: #171b22;
+  flex-shrink: 0;
 }
 
 .app-header h1 {
@@ -64,11 +73,35 @@ button:disabled {
 
 .app-main {
   flex: 1;
+  min-height: 0;
   padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.tab-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .tab-panel.hidden {
   display: none;
+}
+
+.page {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.page-sync {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .tabs {
@@ -92,6 +125,7 @@ button:disabled {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 1rem;
+  flex-shrink: 0;
 }
 
 .card {
@@ -100,6 +134,19 @@ button:disabled {
   border-radius: 12px;
   padding: 1rem 1.1rem;
   margin-bottom: 1rem;
+  flex-shrink: 0;
+}
+
+.card:last-child {
+  margin-bottom: 0;
+}
+
+.card-fill {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 0;
 }
 
 .row {
@@ -252,7 +299,8 @@ button:disabled {
 }
 
 .log-viewer {
-  max-height: 320px;
+  flex: 1;
+  min-height: 0;
   overflow: auto;
   font-family: Consolas, monospace;
   font-size: 0.85rem;

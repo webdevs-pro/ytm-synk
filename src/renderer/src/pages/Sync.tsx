@@ -75,7 +75,7 @@ export function SyncPage(): React.JSX.Element {
   }
 
   return (
-    <div className="page">
+    <div className="page page-sync">
       <div className="page-header">
         <h2>Sync</h2>
         <button disabled={running || !auth?.isAuthenticated} onClick={() => void runSync()}>
@@ -106,7 +106,7 @@ export function SyncPage(): React.JSX.Element {
         </section>
       ) : null}
 
-      <section className="card">
+      <section className="card card-fill">
         <h3>Activity log</h3>
         <LogViewer entries={logs} />
       </section>

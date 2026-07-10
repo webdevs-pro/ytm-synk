@@ -135,8 +135,15 @@ export function SettingsPage(): React.JSX.Element {
     })
     toast({
       title: 'yt-dlp updated',
-      description: info.version || 'latest',
-      variant: 'success'
+      description: `${info.version || 'latest'} — restart the app to use it.`,
+      variant: 'success',
+      duration: 0,
+      action: {
+        label: 'Restart',
+        onClick: () => {
+          void window.api.app.relaunch()
+        }
+      }
     })
   }
 

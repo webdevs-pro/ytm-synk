@@ -36,6 +36,9 @@ export interface YtmApi {
     info: () => Promise<DownloaderInfo & { version: string | null }>
     update: () => Promise<DownloaderInfo & { version: string | null }>
   }
+  app: {
+    relaunch: () => Promise<{ success: boolean }>
+  }
   updater: {
     getStatus: () => Promise<AppUpdateStatus>
     check: () => Promise<AppUpdateStatus>

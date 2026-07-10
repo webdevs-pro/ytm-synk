@@ -220,11 +220,20 @@ export function registerIpcHandlers(): void {
       ? join(process.resourcesPath, 'scripts', 'download-binaries.js')
       : join(app.getAppPath(), 'scripts', 'download-binaries.js')
     const cwd = app.isPackaged ? process.resourcesPath : app.getAppPath()
-    await execFileAsync(process.execPath, [script], { cwd })
+    await execFileAsync(process.execPath, [script], {
+      cwd,
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }
+    })
     return {
       ...downloaderService.getInfo(),
       version: await downloaderService.getVersion()
     }
+  })
+
+  ipcMain.handle(IPC.APP_RELAUNCH, () => {
+    app.relaunch()
+    app.quit()
+    return { success: true }
   })
 
   ipcMain.handle(IPC.UPDATER_GET_STATUS, () => getUpdateStatus())

@@ -151,7 +151,8 @@ export class DatabaseService {
       count: playlist.count,
       thumbnails: playlist.thumbnails,
       selected: config.selectedPlaylists.includes(playlist.id),
-      lastSyncedAt: this.getPlaylistIndex(playlist.id)?.lastSyncedAt ?? null
+      lastSyncedAt: this.getPlaylistIndex(playlist.id)?.lastSyncedAt ?? null,
+      manual: true
     }))
   }
 

@@ -18,6 +18,48 @@ function getMainWindow(): BrowserWindow | null {
   return BrowserWindow.getAllWindows()[0] ?? null
 }
 
+function clearTaskbarProgress(window: BrowserWindow | null): void {
+  if (!window || window.isDestroyed()) return
+  window.setProgressBar(-1)
+}
+
+function updateTaskbarProgress(
+  window: BrowserWindow | null,
+  progress: SyncProgress,
+  playlistCount: number,
+  completedPlaylists: number
+): void {
+  if (!window || window.isDestroyed()) return
+
+  if (playlistCount <= 0) {
+    if (progress.phase === 'fetching' && progress.total === 0) {
+      window.setProgressBar(0, { mode: 'indeterminate' })
+      return
+    }
+
+    const singlePlaylistProgress =
+      progress.phase === 'done'
+        ? 1
+        : progress.total > 0
+          ? progress.current / progress.total
+          : 0
+    window.setProgressBar(Math.min(1, Math.max(0, singlePlaylistProgress)))
+    return
+  }
+
+  const playlistFraction =
+    progress.phase === 'done'
+      ? 1
+      : progress.total > 0
+        ? progress.current / progress.total
+        : progress.phase === 'fetching'
+          ? 0
+          : 0
+
+  const overall = (completedPlaylists + playlistFraction) / playlistCount
+  window.setProgressBar(Math.min(1, Math.max(0, overall)))
+}
+
 export function registerIpcHandlers(): void {
   ipcMain.handle(IPC.AUTH_STATUS, () => authService.getStatus())
 
@@ -117,12 +159,32 @@ export function registerIpcHandlers(): void {
     }
 
     const window = getMainWindow()
+    const playlistCount = database.getConfig().selectedPlaylists.length
+    let completedPlaylists = 0
+
     const sendProgress = (progress: SyncProgress): void => {
+      updateTaskbarProgress(window, progress, playlistCount, completedPlaylists)
+      if (progress.phase === 'done') {
+        completedPlaylists++
+      }
       window?.webContents.send(IPC.SYNC_PROGRESS, progress)
     }
     const sendLog = (entry: SyncLogEntry): void => {
       window?.webContents.send(IPC.SYNC_LOG, entry)
     }
+
+    updateTaskbarProgress(
+      window,
+      {
+        playlistId: '',
+        playlistName: '',
+        phase: 'fetching',
+        current: 0,
+        total: 0
+      },
+      playlistCount,
+      0
+    )
 
     try {
       const summary = await syncService.run({ onProgress: sendProgress, onLog: sendLog })
@@ -143,6 +205,8 @@ export function registerIpcHandlers(): void {
       })
       window?.webContents.send(IPC.SYNC_DONE, summary)
       throw err
+    } finally {
+      clearTaskbarProgress(window)
     }
   })
 }

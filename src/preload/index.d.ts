@@ -1,5 +1,5 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
-import type { AppConfig, AuthStatus, DownloaderInfo, PlaylistSummary, SyncLogEntry, SyncProgress, SyncSummary } from '../shared/types'
+import type { AppConfig, AppUpdateStatus, AuthStatus, DownloaderInfo, PlaylistSummary, SyncLogEntry, SyncProgress, SyncSummary } from '../shared/types'
 
 export interface YtmApi {
   auth: {
@@ -35,6 +35,12 @@ export interface YtmApi {
   downloader: {
     info: () => Promise<DownloaderInfo & { version: string | null }>
     update: () => Promise<DownloaderInfo & { version: string | null }>
+  }
+  updater: {
+    getStatus: () => Promise<AppUpdateStatus>
+    check: () => Promise<AppUpdateStatus>
+    install: () => Promise<{ success: boolean }>
+    onStatus: (callback: (status: AppUpdateStatus) => void) => () => void
   }
 }
 

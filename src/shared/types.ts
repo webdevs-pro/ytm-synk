@@ -89,3 +89,22 @@ export interface DownloaderInfo {
   jsRuntimeKind: 'deno' | 'node' | null
   jsRuntimeExists: boolean
 }
+
+export type AppUpdateState =
+  | 'idle'
+  | 'checking'
+  | 'upToDate'
+  | 'available'
+  | 'downloading'
+  | 'downloaded'
+  | 'unavailable'
+  | 'error'
+
+export interface AppUpdateStatus {
+  state: AppUpdateState
+  currentVersion: string
+  availableVersion?: string
+  percent?: number
+  packaged: boolean
+  message?: string
+}

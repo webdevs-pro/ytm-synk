@@ -7,6 +7,7 @@ import { registerIpcHandlers } from './ipc/handlers'
 import { authService } from './services/auth'
 import { database } from './services/database'
 import { logger } from './services/logger'
+import { initAutoUpdater } from './services/updater'
 import { setMainWindow } from './services/window'
 
 function resolveUserDataDir(): string {
@@ -80,6 +81,7 @@ app.whenReady().then(async () => {
   )
   registerIpcHandlers()
   createWindow()
+  initAutoUpdater()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

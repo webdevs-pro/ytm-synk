@@ -18,5 +18,9 @@ export const IPC = {
   SETTINGS_PICK_COOKIES_FILE: 'settings:pick-cookies-file',
   SETTINGS_OPEN_LOGS: 'settings:open-logs',
   DOWNLOADER_INFO: 'downloader:info',
-  DOWNLOADER_UPDATE: 'downloader:update'
+  DOWNLOADER_UPDATE: 'downloader:update',
+  UPDATER_STATUS: 'updater:status',
+  UPDATER_GET_STATUS: 'updater:get-status',
+  UPDATER_CHECK: 'updater:check',
+  UPDATER_INSTALL: 'updater:install'
 } as const

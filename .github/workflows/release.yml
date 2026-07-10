@@ -56,7 +56,7 @@ jobs:
           git push origin "v${{ steps.bump.outputs.version }}"
 
       - name: Build and publish to GitHub Releases
-        run: npm run build && npx electron-builder --win --publish always
+        run: npm run build:win:publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'

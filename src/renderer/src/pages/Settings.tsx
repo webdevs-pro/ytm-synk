@@ -1,5 +1,27 @@
 import { useEffect, useState } from 'react'
-import type { AppConfig } from '../../../shared/types'
+import type { AppConfig, AppUpdateStatus } from '../../../shared/types'
+
+function updateStatusText(status: AppUpdateStatus | null): string {
+  if (!status) return 'Checking update status...'
+  switch (status.state) {
+    case 'checking':
+      return 'Checking for updates...'
+    case 'upToDate':
+      return 'You are up to date.'
+    case 'available':
+      return `Update ${status.availableVersion} is available. Downloading...`
+    case 'downloading':
+      return `Downloading update ${status.availableVersion || ''} (${Math.round(status.percent ?? 0)}%)...`
+    case 'downloaded':
+      return `Update ${status.availableVersion} downloaded. Restart to install.`
+    case 'unavailable':
+      return status.message || 'Updates are only available in the installed app.'
+    case 'error':
+      return status.message || 'Update check failed.'
+    default:
+      return 'Ready to check for updates.'
+  }
+}
 
 export function SettingsPage(): React.JSX.Element {
   const [config, setConfig] = useState<AppConfig | null>(null)
@@ -13,14 +35,17 @@ export function SettingsPage(): React.JSX.Element {
     jsRuntimeKind: 'deno' | 'node' | null
     jsRuntimeExists: boolean
   } | null>(null)
+  const [updateStatus, setUpdateStatus] = useState<AppUpdateStatus | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [checkingUpdate, setCheckingUpdate] = useState(false)
 
   const load = async (): Promise<void> => {
-    const [cfg, status, info] = await Promise.all([
+    const [cfg, status, info, updater] = await Promise.all([
       window.api.settings.get(),
       window.api.auth.status(),
-      window.api.downloader.info()
+      window.api.downloader.info(),
+      window.api.updater.getStatus()
     ])
     setConfig(cfg)
     setAuth(status)
@@ -31,10 +56,12 @@ export function SettingsPage(): React.JSX.Element {
       jsRuntimeKind: info.jsRuntimeKind,
       jsRuntimeExists: info.jsRuntimeExists
     })
+    setUpdateStatus(updater)
   }
 
   useEffect(() => {
     void load()
+    return window.api.updater.onStatus(setUpdateStatus)
   }, [])
 
   const pickMusicRoot = async (): Promise<void> => {
@@ -92,6 +119,33 @@ export function SettingsPage(): React.JSX.Element {
     setMessage(`yt-dlp updated to ${info.version || 'latest'}`)
   }
 
+  const checkForUpdates = async (): Promise<void> => {
+    setCheckingUpdate(true)
+    setMessage(null)
+    try {
+      const status = await window.api.updater.check()
+      setUpdateStatus(status)
+      if (status.state === 'upToDate') {
+        setMessage(`You are up to date (v${status.currentVersion}).`)
+      } else if (status.state === 'available' || status.state === 'downloading') {
+        setMessage(`Update ${status.availableVersion} found.`)
+      } else if (status.state === 'downloaded') {
+        setMessage(`Update ${status.availableVersion} is ready to install.`)
+      } else if (status.state === 'unavailable') {
+        setMessage(status.message || 'Updates unavailable in development mode.')
+      } else if (status.state === 'error') {
+        setMessage(status.message || 'Update check failed.')
+      }
+    } finally {
+      setCheckingUpdate(false)
+    }
+  }
+
+  const installUpdate = async (): Promise<void> => {
+    setMessage('Restarting to install update...')
+    await window.api.updater.install()
+  }
+
   if (!config) return <div className="page">Loading settings...</div>
 
   return (
@@ -126,6 +180,30 @@ export function SettingsPage(): React.JSX.Element {
           <button disabled={busy || !auth?.isAuthenticated} onClick={() => void logout()}>
             Sign out
           </button>
+        </div>
+      </section>
+
+      <section className="card">
+        <h3>App updates</h3>
+        <p className="muted">
+          Current version: {updateStatus?.currentVersion || '…'}
+          <br />
+          {updateStatusText(updateStatus)}
+        </p>
+        <div className="row">
+          <button
+            disabled={busy || checkingUpdate || updateStatus?.state === 'downloading'}
+            onClick={() => void checkForUpdates()}
+          >
+            {checkingUpdate || updateStatus?.state === 'checking'
+              ? 'Checking...'
+              : 'Check for updates'}
+          </button>
+          {updateStatus?.state === 'downloaded' ? (
+            <button disabled={busy} onClick={() => void installUpdate()}>
+              Restart and install
+            </button>
+          ) : null}
         </div>
       </section>
 

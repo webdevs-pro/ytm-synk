@@ -10,7 +10,7 @@ function updateStatusText(status: AppUpdateStatus | null): string {
     case 'upToDate':
       return 'You are up to date.'
     case 'available':
-      return `Update ${status.availableVersion} is available. Downloading...`
+      return `Update ${status.availableVersion} is available.`
     case 'downloading':
       return `Downloading update ${status.availableVersion || ''} (${Math.round(status.percent ?? 0)}%)...`
     case 'downloaded':
@@ -40,6 +40,7 @@ export function SettingsPage(): React.JSX.Element {
   const [updateStatus, setUpdateStatus] = useState<AppUpdateStatus | null>(null)
   const [busy, setBusy] = useState(false)
   const [checkingUpdate, setCheckingUpdate] = useState(false)
+  const [downloadingUpdate, setDownloadingUpdate] = useState(false)
 
   const load = async (): Promise<void> => {
     const [cfg, status, info, updater] = await Promise.all([
@@ -162,6 +163,23 @@ export function SettingsPage(): React.JSX.Element {
     }
   }
 
+  const downloadUpdate = async (): Promise<void> => {
+    setDownloadingUpdate(true)
+    try {
+      const status = await window.api.updater.download()
+      setUpdateStatus(status)
+      if (status.state === 'error') {
+        toast({
+          title: 'Download failed',
+          description: status.message || 'Could not download the update.',
+          variant: 'error'
+        })
+      }
+    } finally {
+      setDownloadingUpdate(false)
+    }
+  }
+
   const installUpdate = async (): Promise<void> => {
     toast({ title: 'Restarting to install update…', variant: 'info' })
     await window.api.updater.install()
@@ -213,13 +231,29 @@ export function SettingsPage(): React.JSX.Element {
         </p>
         <div className="row">
           <button
-            disabled={busy || checkingUpdate || updateStatus?.state === 'downloading'}
+            disabled={
+              busy ||
+              checkingUpdate ||
+              downloadingUpdate ||
+              updateStatus?.state === 'downloading'
+            }
             onClick={() => void checkForUpdates()}
           >
             {checkingUpdate || updateStatus?.state === 'checking'
               ? 'Checking...'
               : 'Check for updates'}
           </button>
+          {updateStatus?.state === 'available' ||
+          (updateStatus?.state === 'error' && updateStatus.availableVersion) ? (
+            <button
+              disabled={busy || downloadingUpdate}
+              onClick={() => void downloadUpdate()}
+            >
+              {downloadingUpdate
+                ? 'Downloading...'
+                : `Download ${updateStatus.availableVersion}`}
+            </button>
+          ) : null}
           {updateStatus?.state === 'downloaded' ? (
             <button disabled={busy} onClick={() => void installUpdate()}>
               Restart and install

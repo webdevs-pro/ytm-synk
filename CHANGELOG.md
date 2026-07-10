@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Toast notifications for sync results, playlist actions, auth, settings, and app updates
+- Download confirmation for app updates (check only on start / button; download after confirm)
 - Restart action on the "update ready" toast to install downloaded updates
 
 ### Changed

@@ -22,5 +22,6 @@ export const IPC = {
   UPDATER_STATUS: 'updater:status',
   UPDATER_GET_STATUS: 'updater:get-status',
   UPDATER_CHECK: 'updater:check',
+  UPDATER_DOWNLOAD: 'updater:download',
   UPDATER_INSTALL: 'updater:install'
 } as const

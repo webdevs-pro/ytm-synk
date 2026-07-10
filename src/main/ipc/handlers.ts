@@ -13,6 +13,7 @@ import { getLogsDir, getPlaylistFolder } from '../services/paths'
 import { syncService } from '../services/sync'
 import {
   checkForAppUpdates,
+  downloadAppUpdate,
   getUpdateStatus,
   installAppUpdate
 } from '../services/updater'
@@ -229,6 +230,8 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC.UPDATER_GET_STATUS, () => getUpdateStatus())
 
   ipcMain.handle(IPC.UPDATER_CHECK, async () => checkForAppUpdates(true))
+
+  ipcMain.handle(IPC.UPDATER_DOWNLOAD, async () => downloadAppUpdate())
 
   ipcMain.handle(IPC.UPDATER_INSTALL, () => {
     installAppUpdate()

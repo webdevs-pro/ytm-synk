@@ -39,6 +39,7 @@ export interface YtmApi {
   updater: {
     getStatus: () => Promise<AppUpdateStatus>
     check: () => Promise<AppUpdateStatus>
+    download: () => Promise<AppUpdateStatus>
     install: () => Promise<{ success: boolean }>
     onStatus: (callback: (status: AppUpdateStatus) => void) => () => void
   }

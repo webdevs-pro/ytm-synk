@@ -164,6 +164,11 @@ function adoptExistingTrack(
   return adopted
 }
 
+function formatTrackLabel(track: RemoteTrack): string {
+  const artist = track.artists.filter(Boolean).join(', ') || 'Unknown Artist'
+  return `${artist} - ${track.title}`
+}
+
 export class SyncService {
   private running = false
 
@@ -332,11 +337,11 @@ export class SyncService {
     for (const track of remote.tracks) {
       if (keepIds.has(track.videoId)) {
         workCurrent++
-        emitWork('downloading', `Skipped: ${track.title}`)
+        emitWork('downloading', `Skipped: ${formatTrackLabel(track)}`)
         continue
       }
 
-      emitWork('downloading', track.title)
+      emitWork('downloading', formatTrackLabel(track))
 
       try {
         const artist = track.artists[0] || 'Unknown Artist'
@@ -356,7 +361,7 @@ export class SyncService {
           expectedFileName: fileName,
           quality,
           onProgress: (percent) => {
-            emitWork('downloading', `${track.title} (${percent}%)`)
+            emitWork('downloading', `${formatTrackLabel(track)} (${percent}%)`)
           }
         })
 
@@ -376,7 +381,7 @@ export class SyncService {
         summary.downloaded++
         emit.onLog({
           level: 'success',
-          message: `Downloaded: ${track.title}`,
+          message: `Downloaded: ${formatTrackLabel(track)}`,
           timestamp: new Date().toISOString(),
           playlistId,
           videoId: track.videoId
@@ -385,7 +390,7 @@ export class SyncService {
         summary.errors++
         emit.onLog({
           level: 'error',
-          message: `Failed to download ${track.title}: ${err instanceof Error ? err.message : 'unknown error'}`,
+          message: `Failed to download ${formatTrackLabel(track)}: ${err instanceof Error ? err.message : 'unknown error'}`,
           timestamp: new Date().toISOString(),
           playlistId,
           videoId: track.videoId
@@ -393,14 +398,14 @@ export class SyncService {
       }
 
       workCurrent++
-      emitWork('downloading', track.title)
+      emitWork('downloading', formatTrackLabel(track))
     }
 
     summary.skipped += toKeep.length
     for (const track of toKeep) {
       emit.onLog({
         level: 'info',
-        message: `Skipped (already synced): ${track.title}`,
+        message: `Skipped (already synced): ${formatTrackLabel(track)}`,
         timestamp: new Date().toISOString(),
         playlistId,
         videoId: track.videoId

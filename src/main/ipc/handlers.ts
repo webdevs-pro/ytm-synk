@@ -10,17 +10,26 @@ import { database } from '../services/database'
 import { downloaderService } from '../services/downloader'
 import { getLogsDir, getPlaylistFolder } from '../services/paths'
 import { syncService } from '../services/sync'
+import { getMainWindow } from '../services/window'
 import { ytmusicService } from '../services/ytmusic'
 
 const execFileAsync = promisify(execFile)
 
-function getMainWindow(): BrowserWindow | null {
-  return BrowserWindow.getAllWindows()[0] ?? null
-}
-
 function clearTaskbarProgress(window: BrowserWindow | null): void {
   if (!window || window.isDestroyed()) return
-  window.setProgressBar(-1)
+  window.setProgressBar(-1, { mode: 'none' })
+}
+
+function setTaskbarIndeterminate(window: BrowserWindow | null): void {
+  if (!window || window.isDestroyed()) return
+  // Values > 1 show indeterminate progress on Windows.
+  window.setProgressBar(2, { mode: 'indeterminate' })
+}
+
+function setTaskbarDeterminate(window: BrowserWindow | null, value: number): void {
+  if (!window || window.isDestroyed()) return
+  const clamped = Math.min(1, Math.max(0.01, value))
+  window.setProgressBar(clamped, { mode: 'normal' })
 }
 
 function updateTaskbarProgress(
@@ -31,33 +40,17 @@ function updateTaskbarProgress(
 ): void {
   if (!window || window.isDestroyed()) return
 
-  if (playlistCount <= 0) {
-    if (progress.phase === 'fetching' && progress.total === 0) {
-      window.setProgressBar(0, { mode: 'indeterminate' })
-      return
-    }
+  const count = Math.max(playlistCount, 1)
 
-    const singlePlaylistProgress =
-      progress.phase === 'done'
-        ? 1
-        : progress.total > 0
-          ? progress.current / progress.total
-          : 0
-    window.setProgressBar(Math.min(1, Math.max(0, singlePlaylistProgress)))
+  if (progress.phase === 'fetching' || (progress.total <= 0 && progress.phase !== 'done')) {
+    setTaskbarIndeterminate(window)
     return
   }
 
   const playlistFraction =
-    progress.phase === 'done'
-      ? 1
-      : progress.total > 0
-        ? progress.current / progress.total
-        : progress.phase === 'fetching'
-          ? 0
-          : 0
-
-  const overall = (completedPlaylists + playlistFraction) / playlistCount
-  window.setProgressBar(Math.min(1, Math.max(0, overall)))
+    progress.phase === 'done' ? 1 : Math.min(1, Math.max(0, progress.current / progress.total))
+  const overall = (completedPlaylists + playlistFraction) / count
+  setTaskbarDeterminate(window, overall)
 }
 
 async function executeSync(playlistIds?: string[]): Promise<SyncSummary> {
@@ -80,21 +73,11 @@ async function executeSync(playlistIds?: string[]): Promise<SyncSummary> {
     window?.webContents.send(IPC.SYNC_LOG, entry)
   }
 
-  updateTaskbarProgress(
-    window,
-    {
-      playlistId: '',
-      playlistName: '',
-      phase: 'fetching',
-      current: 0,
-      total: 0
-    },
-    playlistCount,
-    0
-  )
+  setTaskbarIndeterminate(window)
 
   try {
     const summary = await syncService.run({ onProgress: sendProgress, onLog: sendLog }, playlistIds)
+    setTaskbarDeterminate(window, 1)
     window?.webContents.send(IPC.SYNC_DONE, summary)
     return summary
   } catch (err) {
@@ -105,6 +88,9 @@ async function executeSync(playlistIds?: string[]): Promise<SyncSummary> {
       errors: 1,
       playlists: 0
     }
+    if (window && !window.isDestroyed()) {
+      window.setProgressBar(1, { mode: 'error' })
+    }
     sendLog({
       level: 'error',
       message: err instanceof Error ? err.message : 'Sync failed',
@@ -113,7 +99,7 @@ async function executeSync(playlistIds?: string[]): Promise<SyncSummary> {
     window?.webContents.send(IPC.SYNC_DONE, summary)
     throw err
   } finally {
-    clearTaskbarProgress(window)
+    setTimeout(() => clearTaskbarProgress(window), 750)
   }
 }
 

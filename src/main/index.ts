@@ -4,6 +4,7 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { registerIpcHandlers } from './ipc/handlers'
 import { authService } from './services/auth'
+import { setMainWindow } from './services/window'
 
 function resolveUserDataDir(): string {
   if (process.platform === 'win32') {
@@ -25,12 +26,14 @@ function createWindow(): void {
     minHeight: 600,
     show: false,
     autoHideMenuBar: true,
-    title: 'YTM-Synk',
+    title: 'YouTube Music synchronizer',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false
     }
   })
+
+  setMainWindow(mainWindow)
 
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()

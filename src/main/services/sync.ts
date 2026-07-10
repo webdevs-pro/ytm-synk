@@ -273,15 +273,25 @@ export class SyncService {
     const orphans = collectOrphanFiles(folder, remoteIds, existing, folderIndex)
     database.savePlaylistIndex(existing)
 
-    emit.onProgress({
-      playlistId,
-      playlistName: remote.name,
-      phase: 'deleting',
-      current: 0,
-      total: orphans.size
-    })
+    const workTotal = Math.max(orphans.size + remote.tracks.length, 1)
+    let workCurrent = 0
 
-    let deletedCount = 0
+    const emitWork = (
+      phase: SyncProgress['phase'],
+      currentTrack?: string
+    ): void => {
+      emit.onProgress({
+        playlistId,
+        playlistName: remote.name,
+        phase,
+        current: workCurrent,
+        total: workTotal,
+        currentTrack
+      })
+    }
+
+    emitWork('deleting')
+
     for (const [filePath, orphan] of orphans) {
       if (orphan.videoId) {
         delete existing.tracks[orphan.videoId]
@@ -310,37 +320,23 @@ export class SyncService {
         }
       }
 
-      deletedCount++
-      emit.onProgress({
-        playlistId,
-        playlistName: remote.name,
-        phase: 'deleting',
-        current: deletedCount,
-        total: orphans.size
-      })
+      workCurrent++
+      emitWork('deleting', orphan.label)
     }
 
     database.savePlaylistIndex(existing)
+    emitWork('downloading')
 
-    const downloadTotal = toDownload.length
-    emit.onProgress({
-      playlistId,
-      playlistName: remote.name,
-      phase: 'downloading',
-      current: 0,
-      total: downloadTotal
-    })
+    const keepIds = new Set(toKeep.map((track) => track.videoId))
 
-    for (let i = 0; i < toDownload.length; i++) {
-      const track = toDownload[i]
-      emit.onProgress({
-        playlistId,
-        playlistName: remote.name,
-        phase: 'downloading',
-        current: i,
-        total: downloadTotal,
-        currentTrack: track.title
-      })
+    for (const track of remote.tracks) {
+      if (keepIds.has(track.videoId)) {
+        workCurrent++
+        emitWork('downloading', `Skipped: ${track.title}`)
+        continue
+      }
+
+      emitWork('downloading', track.title)
 
       try {
         const artist = track.artists[0] || 'Unknown Artist'
@@ -360,14 +356,7 @@ export class SyncService {
           expectedFileName: fileName,
           quality,
           onProgress: (percent) => {
-            emit.onProgress({
-              playlistId,
-              playlistName: remote.name,
-              phase: 'downloading',
-              current: i,
-              total: downloadTotal,
-              currentTrack: `${track.title} (${percent}%)`
-            })
+            emitWork('downloading', `${track.title} (${percent}%)`)
           }
         })
 
@@ -403,13 +392,8 @@ export class SyncService {
         })
       }
 
-      emit.onProgress({
-        playlistId,
-        playlistName: remote.name,
-        phase: 'downloading',
-        current: i + 1,
-        total: downloadTotal
-      })
+      workCurrent++
+      emitWork('downloading', track.title)
     }
 
     summary.skipped += toKeep.length
@@ -430,8 +414,8 @@ export class SyncService {
       playlistId,
       playlistName: remote.name,
       phase: 'done',
-      current: downloadTotal,
-      total: downloadTotal
+      current: workTotal,
+      total: workTotal
     })
 
     emit.onLog({

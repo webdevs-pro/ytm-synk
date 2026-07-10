@@ -1,5 +1,5 @@
 import { execFile } from 'child_process'
-import { existsSync, rmSync } from 'fs'
+import { existsSync, mkdirSync, rmSync } from 'fs'
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { join } from 'path'
 import { promisify } from 'util'
@@ -178,7 +178,9 @@ export function registerIpcHandlers(): void {
   })
 
   ipcMain.handle(IPC.SETTINGS_OPEN_LOGS, async () => {
-    await shell.openPath(getLogsDir())
+    const logsDir = getLogsDir()
+    mkdirSync(logsDir, { recursive: true })
+    await shell.openPath(logsDir)
   })
 
   ipcMain.handle(IPC.DOWNLOADER_INFO, async () => ({

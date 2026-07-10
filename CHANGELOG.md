@@ -5,6 +5,22 @@ All notable changes to YTM-Synk are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-07-10
+
+### Added
+
+- Split Playlists into "From YouTube Music" and "Manually added" sections
+- Stop button on the active playlist row while syncing
+
+### Changed
+
+- Show Remove only for manually added playlists
+
+### Fixed
+
+- Adding album playlists (`OLAK…`) manually no longer fails
+- Stopping sync from a playlist row no longer shows a duplicate toast
+
 ## [1.4.0] - 2026-07-10
 
 ### Added

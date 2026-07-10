@@ -11,12 +11,6 @@ import { database } from './database'
 import { logger } from './logger'
 
 type YtmClient = YtmCookieClient & {
-  getPlaylist: (playlistId: string) => Promise<{
-    playlistId: string
-    name: string
-    videoCount: number
-    thumbnails: Array<{ url: string; width: number; height: number }>
-  }>
   constructRequest: (
     endpoint: string,
     body?: Record<string, unknown>,
@@ -54,11 +48,9 @@ export class YTMusicService {
       throw new Error('Invalid playlist URL or ID')
     }
 
-    let client: YtmClient
     try {
-      client = this.client ?? (await this.createClient())
-      const meta = await client.getPlaylist(playlistId)
-      this.client = client
+      const client = await this.freshClient()
+      const meta = await fetchPlaylistMeta(client, playlistId)
       const id = normalizePlaylistId(meta.playlistId)
       const config = database.toggleSelectedPlaylist(id, true)
       database.ensurePlaylistIndexStub(id, meta.name)
@@ -69,7 +61,8 @@ export class YTMusicService {
         count: meta.videoCount,
         thumbnails: meta.thumbnails,
         selected: config.selectedPlaylists.some((entry) => normalizePlaylistId(entry) === id),
-        lastSyncedAt: database.getPlaylistIndex(id)?.lastSyncedAt ?? null
+        lastSyncedAt: database.getPlaylistIndex(id)?.lastSyncedAt ?? null,
+        manual: true
       }
       database.saveManualPlaylist(summary)
       return summary
@@ -95,10 +88,13 @@ export class YTMusicService {
     const config = database.getConfig()
     const merged = new Map<string, PlaylistSummary>()
     let libraryError: string | undefined
+    const manualIds = new Set(
+      (config.manualPlaylists ?? []).map((playlist) => normalizePlaylistId(playlist.id))
+    )
 
     for (const playlist of database.getManualPlaylistSummaries()) {
       const id = normalizePlaylistId(playlist.id)
-      merged.set(id, { ...playlist, id })
+      merged.set(id, { ...playlist, id, manual: true })
     }
 
     const selectedIds = new Set(config.selectedPlaylists.map((id) => normalizePlaylistId(id)))
@@ -118,7 +114,8 @@ export class YTMusicService {
         count: item.count,
         thumbnails: item.thumbnails,
         selected: selectedIds.has(id),
-        lastSyncedAt: local?.lastSyncedAt ?? null
+        lastSyncedAt: local?.lastSyncedAt ?? null,
+        manual: false
       })
     }
 
@@ -178,7 +175,8 @@ export class YTMusicService {
           count: Object.keys(index.tracks).length,
           thumbnails: [],
           selected: true,
-          lastSyncedAt: index.lastSyncedAt
+          lastSyncedAt: index.lastSyncedAt,
+          manual: manualIds.has(id)
         })
       }
     }
@@ -195,7 +193,7 @@ export class YTMusicService {
 
   async getPlaylistTracks(playlistId: string): Promise<{ name: string; tracks: RemoteTrack[] }> {
     const client = await this.ensureClient()
-    const meta = await client.getPlaylist(playlistId)
+    const meta = await fetchPlaylistMeta(client, playlistId)
     const videos = await fetchAllPlaylistVideos(client, playlistId)
 
     const tracks: RemoteTrack[] = videos
@@ -220,12 +218,214 @@ type PlaylistVideo = {
   thumbnails: Array<{ url: string; width: number; height: number }>
 }
 
+type PlaylistMeta = {
+  playlistId: string
+  name: string
+  videoCount: number
+  thumbnails: Array<{ url: string; width: number; height: number }>
+}
+
+/** YouTube Music playlist browse ids use a VL prefix for PL/OLAK (and similar) lists. */
+function toPlaylistBrowseId(playlistId: string): string {
+  const id = playlistId.trim()
+  if (!id) return id
+  if (id.startsWith('VL') || id === 'LM' || id.startsWith('FE')) return id
+  if (id.startsWith('PL') || id.startsWith('OLAK') || id.startsWith('RD')) return `VL${id}`
+  return id
+}
+
+/** Browse playlist metadata without ytmusic-api's fragile PlaylistParser. */
+async function fetchPlaylistMeta(client: YtmClient, playlistId: string): Promise<PlaylistMeta> {
+  const browseId = toPlaylistBrowseId(playlistId)
+  const response = await client.constructRequest('browse', { browseId })
+  const id = normalizePlaylistId(playlistId)
+  const name =
+    extractPlaylistTitle(response) ?? extractAlbumTitleFromTracks(response)
+  const videoCount =
+    extractPlaylistVideoCount(response) ?? countPlaylistItemsOnPage(response) ?? 0
+  const hasTracks = videoCount > 0 || findPlaylistShelfRenderer(response) !== null
+
+  if (!name) {
+    const diagnosis = diagnoseLibraryBrowseResponse(response)
+    logger.error(
+      `Playlist meta title missing for ${browseId} (diagnosis=${diagnosis}, hasTracks=${hasTracks}, bytes=${JSON.stringify(response).length})`
+    )
+    if (hasTracks) {
+      return {
+        playlistId: id,
+        name: id,
+        videoCount,
+        thumbnails: extractThumbnails(response)
+      }
+    }
+    if (diagnosis.includes('guest') || diagnosis.includes('signed-out')) {
+      throw new Error('YouTube Music returned a signed-out page for this playlist')
+    }
+    throw new Error('Could not read playlist details from YouTube Music')
+  }
+
+  return {
+    playlistId: id,
+    name,
+    videoCount,
+    thumbnails: extractThumbnails(response)
+  }
+}
+
+function extractPlaylistTitle(response: unknown): string | null {
+  for (const key of [
+    'musicResponsiveHeaderRenderer',
+    'musicDetailHeaderRenderer',
+    'musicVisualHeaderRenderer',
+    'musicImmersiveHeaderRenderer'
+  ]) {
+    const header = deepFind(response, key)
+    if (!header || typeof header !== 'object') continue
+    const record = header as Record<string, unknown>
+    const title =
+      extractText(record.title) ??
+      extractText(record.fullscreenTitle) ??
+      extractText(record.headline)
+    if (title) return title
+  }
+
+  const editable = deepFind(response, 'musicEditablePlaylistDetailHeaderRenderer')
+  if (editable && typeof editable === 'object') {
+    const header = (editable as Record<string, unknown>).header
+    if (header && typeof header === 'object') {
+      for (const key of ['musicDetailHeaderRenderer', 'musicResponsiveHeaderRenderer']) {
+        const detail = (header as Record<string, unknown>)[key]
+        if (!detail || typeof detail !== 'object') continue
+        const title = extractText((detail as Record<string, unknown>).title)
+        if (title) return title
+      }
+    }
+  }
+
+  // Same path ytmusic-api uses: tabs → title → text
+  const fromTabs = traverseFirstString(response, 'tabs', 'title', 'text')
+  if (fromTabs) return fromTabs
+
+  const microformat = deepFind(response, 'microformatDataRenderer')
+  if (microformat && typeof microformat === 'object') {
+    const title = (microformat as Record<string, unknown>).title
+    if (typeof title === 'string' && title.trim()) return title.trim()
+  }
+
+  return null
+}
+
+/** Album playlists (OLAK…) often omit a page header; album name is on track rows. */
+function extractAlbumTitleFromTracks(response: unknown): string | null {
+  const titles = new Set<string>()
+
+  walk(response, (node) => {
+    if (!node || typeof node !== 'object' || Array.isArray(node)) return
+    const record = node as Record<string, unknown>
+    const runs = record.runs
+    if (!Array.isArray(runs)) return
+
+    for (const run of runs) {
+      if (!run || typeof run !== 'object') continue
+      const runRecord = run as Record<string, unknown>
+      if (typeof runRecord.text !== 'string' || !runRecord.text.trim()) continue
+      if (!isAlbumBrowseEndpoint(runRecord.navigationEndpoint)) continue
+      titles.add(runRecord.text.trim())
+    }
+  })
+
+  const [first] = titles
+  return first ?? null
+}
+
+function isAlbumBrowseEndpoint(endpoint: unknown): boolean {
+  if (!endpoint || typeof endpoint !== 'object') return false
+  const browse = (endpoint as Record<string, unknown>).browseEndpoint
+  if (!browse || typeof browse !== 'object') return false
+  const configs = (browse as Record<string, unknown>).browseEndpointContextSupportedConfigs
+  if (!configs || typeof configs !== 'object') return false
+  const musicConfig = (configs as Record<string, unknown>).browseEndpointContextMusicConfig
+  if (!musicConfig || typeof musicConfig !== 'object') return false
+  return (musicConfig as Record<string, unknown>).pageType === 'MUSIC_PAGE_TYPE_ALBUM'
+}
+
+/**
+ * Collect nested values by successive key lookups (ytmusic-api traverse style).
+ * Returns the first non-empty string found at the final key.
+ */
+function traverseFirstString(data: unknown, ...keys: string[]): string | null {
+  const again = (node: unknown, key: string): unknown[] => {
+    const results: unknown[] = []
+    if (!node || typeof node !== 'object') return results
+    if (Array.isArray(node)) {
+      for (const child of node) results.push(...again(child, key))
+      return results
+    }
+    const record = node as Record<string, unknown>
+    if (key in record) results.push(record[key])
+    for (const value of Object.values(record)) {
+      results.push(...again(value, key))
+    }
+    return results
+  }
+
+  let values: unknown[] = [data]
+  for (const key of keys) {
+    values = values.flatMap((value) => again(value, key))
+  }
+
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) return value.trim()
+    const text = extractText(value)
+    if (text) return text
+  }
+  return null
+}
+
+function extractPlaylistVideoCount(response: unknown): number | null {
+  const texts: string[] = []
+
+  const collectText = (node: unknown): void => {
+    const text = extractText(node)
+    if (text) texts.push(text)
+    if (!node || typeof node !== 'object') return
+    const runs = (node as Record<string, unknown>).runs
+    if (!Array.isArray(runs)) return
+    for (const run of runs) {
+      if (!run || typeof run !== 'object') continue
+      const value = (run as Record<string, unknown>).text
+      if (typeof value === 'string' && value.trim()) texts.push(value.trim())
+    }
+  }
+
+  for (const key of ['secondSubtitle', 'subtitle']) {
+    collectText(deepFind(response, key))
+  }
+
+  for (const text of texts) {
+    const match = text.match(/([\d,]+)\s*(?:songs?|tracks?|videos?)/i)
+    if (match) return Number(match[1].replace(/,/g, ''))
+  }
+
+  return null
+}
+
+function countPlaylistItemsOnPage(response: unknown): number | null {
+  const shelf = findPlaylistShelfRenderer(response)
+  if (!shelf || !Array.isArray(shelf.contents)) return null
+  let count = 0
+  for (const entry of shelf.contents) {
+    if (!entry || typeof entry !== 'object') continue
+    if ('musicResponsiveListItemRenderer' in (entry as Record<string, unknown>)) count++
+  }
+  return count > 0 ? count : null
+}
+
 async function fetchAllPlaylistVideos(
   client: YtmClient,
   playlistId: string
 ): Promise<PlaylistVideo[]> {
-  let browseId = playlistId
-  if (browseId.startsWith('PL')) browseId = `VL${browseId}`
+  const browseId = toPlaylistBrowseId(playlistId)
 
   const videos = new Map<string, PlaylistVideo>()
   const response = await client.constructRequest('browse', { browseId })
@@ -514,7 +714,8 @@ function parsePlaylistVideoItem(item: Record<string, unknown>): PlaylistVideo | 
   }
 }
 
-function parseDuration(text: string): number | null {
+function parseDuration(text: string | null | undefined): number | null {
+  if (!text) return null
   const parts = text.split(':').map((part) => Number(part))
   if (parts.some((part) => Number.isNaN(part))) return null
   if (parts.length === 2) return parts[0] * 60 + parts[1]
@@ -766,6 +967,10 @@ function parseResponsivePlaylist(item: Record<string, unknown>): {
 }
 
 function extractText(node: unknown): string | null {
+  if (typeof node === 'string') {
+    const trimmed = node.trim()
+    return trimmed ? trimmed : null
+  }
   if (!node || typeof node !== 'object') return null
   const record = node as Record<string, unknown>
 
@@ -782,8 +987,23 @@ function extractText(node: unknown): string | null {
   }
 
   if ('text' in record && record.text !== node) {
-    const nested = extractText(record.text)
-    if (nested) return nested
+    if (typeof record.text === 'string') {
+      const trimmed = record.text.trim()
+      if (trimmed) return trimmed
+    } else {
+      const nested = extractText(record.text)
+      if (nested) return nested
+    }
+  }
+
+  if (typeof record.content === 'string') {
+    const trimmed = record.content.trim()
+    if (trimmed) return trimmed
+  }
+
+  if (typeof record.label === 'string') {
+    const trimmed = record.label.trim()
+    if (trimmed) return trimmed
   }
 
   if (typeof record.simpleText === 'string') return record.simpleText

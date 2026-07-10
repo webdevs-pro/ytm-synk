@@ -39,6 +39,8 @@ export interface PlaylistSummary {
   thumbnails: Array<{ url: string; width: number; height: number }>
   selected: boolean
   lastSyncedAt: string | null
+  /** True when the playlist was added manually (not from the library browse). */
+  manual: boolean
 }
 
 export interface PlaylistListResult {

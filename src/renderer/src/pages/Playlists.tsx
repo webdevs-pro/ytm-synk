@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ProgressBar } from '../components/ProgressBar'
 import { useToast } from '../components/Toast'
 import type { PlaylistSummary, SyncProgress } from '../../../shared/types'
@@ -36,6 +36,16 @@ export function PlaylistsPage(): React.JSX.Element {
   const [auth, setAuth] = useState<{ isAuthenticated: boolean } | null>(null)
   const [syncRunning, setSyncRunning] = useState(false)
   const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null)
+  const [stopping, setStopping] = useState(false)
+
+  const libraryPlaylists = useMemo(
+    () => playlists.filter((playlist) => !playlist.manual),
+    [playlists]
+  )
+  const manualPlaylists = useMemo(
+    () => playlists.filter((playlist) => playlist.manual),
+    [playlists]
+  )
 
   const load = async (): Promise<void> => {
     setLoading(true)
@@ -69,6 +79,7 @@ export function PlaylistsPage(): React.JSX.Element {
     const unsubDone = window.api.sync.onDone(() => {
       setSyncRunning(false)
       setSyncProgress(null)
+      setStopping(false)
       void load()
     })
 
@@ -98,8 +109,10 @@ export function PlaylistsPage(): React.JSX.Element {
       const added = await window.api.playlists.add(manualInput.trim())
       setManualInput('')
       setPlaylists((current) => {
-        const without = current.filter((item) => item.id !== added.id)
-        return [added, ...without]
+        const without = current.filter(
+          (item) => normalizePlaylistId(item.id) !== normalizePlaylistId(added.id)
+        )
+        return [...without, { ...added, manual: true }]
       })
       toast({
         title: 'Playlist added',
@@ -120,12 +133,14 @@ export function PlaylistsPage(): React.JSX.Element {
     setError(null)
     setSyncProgress(null)
     setSyncRunning(true)
+    setStopping(false)
     try {
       await window.api.playlists.sync(playlist.id)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to sync playlist'
       setSyncRunning(false)
       setSyncProgress(null)
+      setStopping(false)
       if (/sync stopped/i.test(message)) {
         setError(null)
         return
@@ -140,7 +155,22 @@ export function PlaylistsPage(): React.JSX.Element {
     } finally {
       const stillRunning = await window.api.sync.isRunning()
       setSyncRunning(stillRunning)
-      if (!stillRunning) setSyncProgress(null)
+      if (!stillRunning) {
+        setSyncProgress(null)
+        setStopping(false)
+      }
+    }
+  }
+
+  const stopSync = async (): Promise<void> => {
+    if (!syncRunning || stopping) return
+    setStopping(true)
+    try {
+      await window.api.sync.stop()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to stop sync'
+      setStopping(false)
+      toast({ title: 'Could not stop sync', description: message, variant: 'error' })
     }
   }
 
@@ -179,6 +209,74 @@ export function PlaylistsPage(): React.JSX.Element {
     }
   }
 
+  const renderPlaylistRow = (playlist: PlaylistSummary): React.JSX.Element => {
+    const isActive =
+      syncRunning &&
+      syncProgress !== null &&
+      samePlaylistId(syncProgress.playlistId, playlist.id)
+
+    return (
+      <div key={playlist.id} className="playlist-card">
+        <label className="playlist-select">
+          <input
+            type="checkbox"
+            checked={playlist.selected}
+            disabled={syncRunning}
+            onChange={() => void toggle(playlist)}
+          />
+          <div className="playlist-info">
+            <div className="playlist-title">{playlist.title}</div>
+            <div className="muted">
+              {playlist.count} tracks
+              {playlist.lastSyncedAt
+                ? ` · last synced ${new Date(playlist.lastSyncedAt).toLocaleString()}`
+                : ''}
+            </div>
+            {isActive && syncProgress ? (
+              <div className="playlist-sync-progress">
+                <ProgressBar
+                  value={syncProgress.current}
+                  max={Math.max(syncProgress.total, 1)}
+                  label={syncPhaseLabel(syncProgress)}
+                />
+              </div>
+            ) : null}
+          </div>
+        </label>
+        <div className="playlist-actions">
+          {isActive ? (
+            <button
+              type="button"
+              className="button-danger"
+              disabled={stopping}
+              onClick={() => void stopSync()}
+            >
+              {stopping ? 'Stopping...' : 'Stop'}
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={!auth?.isAuthenticated || syncRunning || !playlist.selected}
+              onClick={() => void syncPlaylist(playlist)}
+            >
+              Sync
+            </button>
+          )}
+          {playlist.manual ? (
+            <button
+              type="button"
+              className="button-danger"
+              disabled={syncRunning}
+              onClick={() => openRemoveDialog(playlist)}
+            >
+              Remove
+            </button>
+          ) : null}
+        </div>
+      </div>
+    )
+  }
+
   if (loading) return <div className="page">Loading playlists...</div>
 
   return (
@@ -188,14 +286,31 @@ export function PlaylistsPage(): React.JSX.Element {
         <button onClick={() => void load()}>Refresh</button>
       </div>
 
-      <section className="card">
-        <h3>Add playlist manually</h3>
+      {!auth?.isAuthenticated ? (
+        <div className="banner">Sign in on the Settings page before syncing.</div>
+      ) : null}
+
+      {error ? <div className="banner error">{error}</div> : null}
+
+      <section className="playlist-section">
+        <h3>From YouTube Music</h3>
+        <p className="muted">Playlists from your connected library.</p>
+        {libraryPlaylists.length === 0 ? (
+          <div className="card muted">
+            No library playlists returned. Sign in on Settings, or add a playlist manually below.
+          </div>
+        ) : (
+          <div className="playlist-grid">{libraryPlaylists.map(renderPlaylistRow)}</div>
+        )}
+      </section>
+
+      <section className="playlist-section">
+        <h3>Manually added</h3>
         <p className="muted">
-          If your library list is empty, paste a playlist URL or ID (for example
-          {' '}
-          <code>PLxxx...</code> or <code>LM</code> for Liked Music).
+          Paste a playlist URL or ID (for example <code>PLxxx...</code> or <code>LM</code> for Liked
+          Music).
         </p>
-        <div className="row">
+        <div className="row playlist-add-row">
           <input
             className="text-input"
             value={manualInput}
@@ -206,79 +321,12 @@ export function PlaylistsPage(): React.JSX.Element {
             {adding ? 'Adding...' : 'Add playlist'}
           </button>
         </div>
+        {manualPlaylists.length === 0 ? (
+          <div className="card muted">No manually added playlists yet.</div>
+        ) : (
+          <div className="playlist-grid">{manualPlaylists.map(renderPlaylistRow)}</div>
+        )}
       </section>
-
-      {!auth?.isAuthenticated ? (
-        <div className="banner">Sign in on the Settings page before syncing.</div>
-      ) : null}
-
-      {error ? <div className="banner error">{error}</div> : null}
-
-      {playlists.length === 0 ? (
-        <div className="card muted">
-          No library playlists returned. Use the form above to add a playlist by URL, or sign out and
-          import cookies.txt from a browser where YouTube Music is already logged in.
-        </div>
-      ) : (
-        <div className="playlist-grid">
-          {playlists.map((playlist) => {
-            const isActive =
-              syncRunning &&
-              syncProgress !== null &&
-              samePlaylistId(syncProgress.playlistId, playlist.id)
-
-            return (
-              <div key={playlist.id} className="playlist-card">
-                <label className="playlist-select">
-                  <input
-                    type="checkbox"
-                    checked={playlist.selected}
-                    disabled={syncRunning}
-                    onChange={() => void toggle(playlist)}
-                  />
-                  <div className="playlist-info">
-                    <div className="playlist-title">{playlist.title}</div>
-                    <div className="muted">
-                      {playlist.count} tracks
-                      {playlist.lastSyncedAt
-                        ? ` · last synced ${new Date(playlist.lastSyncedAt).toLocaleString()}`
-                        : ''}
-                    </div>
-                    {isActive && syncProgress ? (
-                      <div className="playlist-sync-progress">
-                        <ProgressBar
-                          value={syncProgress.current}
-                          max={Math.max(syncProgress.total, 1)}
-                          label={syncPhaseLabel(syncProgress)}
-                        />
-                      </div>
-                    ) : null}
-                  </div>
-                </label>
-                <div className="playlist-actions">
-                  <button
-                    type="button"
-                    disabled={
-                      !auth?.isAuthenticated || syncRunning || !playlist.selected
-                    }
-                    onClick={() => void syncPlaylist(playlist)}
-                  >
-                    {isActive ? 'Syncing...' : 'Sync'}
-                  </button>
-                  <button
-                    type="button"
-                    className="button-danger"
-                    disabled={syncRunning}
-                    onClick={() => openRemoveDialog(playlist)}
-                  >
-                    Remove
-                  </button>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
 
       {removeTarget ? (
         <div className="modal-overlay" onClick={closeRemoveDialog}>

@@ -39,6 +39,15 @@ button {
   cursor: pointer;
 }
 
+select {
+  background: #0f1218;
+  border: 1px solid #2a2f3a;
+  border-radius: 8px;
+  color: inherit;
+  padding: 0.55rem 0.75rem;
+  cursor: pointer;
+}
+
 button:hover {
   background: #2a3140;
 }
@@ -175,6 +184,11 @@ button:disabled {
   border-radius: 8px;
   color: inherit;
   padding: 0.55rem 0.75rem;
+}
+
+select.text-input {
+  flex: 0 1 auto;
+  min-width: 0;
 }
 
 .banner {

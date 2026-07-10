@@ -41,6 +41,11 @@ export interface PlaylistSummary {
   lastSyncedAt: string | null
 }
 
+export interface PlaylistListResult {
+  playlists: PlaylistSummary[]
+  libraryError?: string
+}
+
 export interface RemoteTrack {
   videoId: string
   title: string

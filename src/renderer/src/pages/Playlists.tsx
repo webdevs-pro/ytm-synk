@@ -21,8 +21,13 @@ export function PlaylistsPage(): React.JSX.Element {
     setLoading(true)
     setError(null)
     try {
-      const items = await window.api.playlists.list()
-      setPlaylists(items)
+      const result = await window.api.playlists.list()
+      setPlaylists(result.playlists)
+      if (result.libraryError) {
+        setError(
+          `Could not load library playlists (${result.libraryError}). Showing saved/manual playlists only.`
+        )
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load playlists')
     } finally {

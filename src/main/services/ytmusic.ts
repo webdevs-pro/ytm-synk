@@ -1,5 +1,5 @@
 import YTMusic from 'ytmusic-api'
-import type { PlaylistSummary, RemoteTrack } from '../../shared/types'
+import type { PlaylistListResult, PlaylistSummary, RemoteTrack } from '../../shared/types'
 import { authService } from './auth'
 import {
   configureYtmusicClient,
@@ -8,6 +8,7 @@ import {
   type YtmCookieClient
 } from './cookies'
 import { database } from './database'
+import { logger } from './logger'
 
 type YtmClient = YtmCookieClient & {
   getPlaylist: (playlistId: string) => Promise<{
@@ -58,16 +59,17 @@ export class YTMusicService {
       client = this.client ?? (await this.createClient())
       const meta = await client.getPlaylist(playlistId)
       this.client = client
-      const config = database.toggleSelectedPlaylist(meta.playlistId, true)
-      database.ensurePlaylistIndexStub(meta.playlistId, meta.name)
+      const id = normalizePlaylistId(meta.playlistId)
+      const config = database.toggleSelectedPlaylist(id, true)
+      database.ensurePlaylistIndexStub(id, meta.name)
 
       const summary: PlaylistSummary = {
-        id: meta.playlistId,
+        id,
         title: meta.name,
         count: meta.videoCount,
         thumbnails: meta.thumbnails,
-        selected: config.selectedPlaylists.includes(meta.playlistId),
-        lastSyncedAt: database.getPlaylistIndex(meta.playlistId)?.lastSyncedAt ?? null
+        selected: config.selectedPlaylists.some((entry) => normalizePlaylistId(entry) === id),
+        lastSyncedAt: database.getPlaylistIndex(id)?.lastSyncedAt ?? null
       }
       database.saveManualPlaylist(summary)
       return summary
@@ -83,59 +85,95 @@ export class YTMusicService {
     this.client = null
   }
 
-  async getLibraryPlaylists(): Promise<PlaylistSummary[]> {
+  /** Always rebuild the client so auth header/cookie changes apply immediately. */
+  private async freshClient(): Promise<YtmClient> {
+    this.client = null
+    return this.ensureClient()
+  }
+
+  async getLibraryPlaylists(): Promise<PlaylistListResult> {
     const config = database.getConfig()
     const merged = new Map<string, PlaylistSummary>()
+    let libraryError: string | undefined
 
     for (const playlist of database.getManualPlaylistSummaries()) {
-      merged.set(playlist.id, playlist)
+      const id = normalizePlaylistId(playlist.id)
+      merged.set(id, { ...playlist, id })
+    }
+
+    const selectedIds = new Set(config.selectedPlaylists.map((id) => normalizePlaylistId(id)))
+
+    const mergeLibraryItem = (item: {
+      id: string
+      title: string
+      count: number
+      thumbnails: Array<{ url: string; width: number; height: number }>
+    }): void => {
+      // Library browse only lists playlists — never auto-select for sync.
+      const id = normalizePlaylistId(item.id)
+      const local = database.getPlaylistIndex(id) ?? database.getPlaylistIndex(`VL${id}`)
+      merged.set(id, {
+        id,
+        title: item.title,
+        count: item.count,
+        thumbnails: item.thumbnails,
+        selected: selectedIds.has(id),
+        lastSyncedAt: local?.lastSyncedAt ?? null
+      })
     }
 
     try {
-      const client = await this.ensureClient()
-      const playlists: PlaylistSummary[] = []
+      const client = await this.freshClient()
 
       let continuation: string | null = null
       let data = await client.constructRequest('browse', { browseId: 'FEmusic_liked_playlists' })
+      let pages = 0
+      let parsedLibraryItems = 0
 
       const collect = (response: unknown): void => {
         const items = extractGridPlaylistItems(response)
+        parsedLibraryItems += items.length
         for (const item of items) {
-          const local = database.getPlaylistIndex(item.id)
-          playlists.push({
-            id: item.id,
-            title: item.title,
-            count: item.count,
-            thumbnails: item.thumbnails,
-            selected: config.selectedPlaylists.includes(item.id),
-            lastSyncedAt: local?.lastSyncedAt ?? null
-          })
+          mergeLibraryItem(item)
         }
-        continuation = extractContinuation(response)
+        continuation = extractLibraryContinuation(response)
       }
 
       collect(data)
-      while (continuation) {
+      while (continuation && pages < 50) {
+        pages++
         data = await client.constructRequest('browse', { browseId: 'FEmusic_liked_playlists' }, {
           continuation
         })
         collect(data)
       }
 
-      for (const playlist of playlists) {
-        merged.set(playlist.id, playlist)
+      if (parsedLibraryItems === 0) {
+        const diagnosis = diagnoseLibraryBrowseResponse(data)
+        logger.info(
+          `Library browse returned 0 playlists (${diagnosis}). Manual playlists: ${merged.size}.`
+        )
+        if (diagnosis.includes('guest') || diagnosis.includes('signed-out')) {
+          libraryError =
+            'YouTube Music returned a signed-out library page. Sign out and sign in again, then wait until your library loads before closing the login window.'
+        } else {
+          libraryError = `Library browse returned no playlists (${diagnosis}). Try signing out and back in.`
+        }
       }
-    } catch {
-      // Library browse is unavailable for some accounts.
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to load library playlists'
+      libraryError = message
+      logger.error(`Library playlist browse failed: ${message}`)
     }
 
     for (const playlistId of config.selectedPlaylists) {
-      if (merged.has(playlistId)) continue
+      const id = normalizePlaylistId(playlistId)
+      if (merged.has(id)) continue
 
-      const index = database.getPlaylistIndex(playlistId)
+      const index = database.getPlaylistIndex(id) ?? database.getPlaylistIndex(playlistId)
       if (index) {
-        merged.set(playlistId, {
-          id: index.id,
+        merged.set(id, {
+          id,
           title: index.name,
           count: Object.keys(index.tracks).length,
           thumbnails: [],
@@ -146,10 +184,13 @@ export class YTMusicService {
     }
 
     for (const playlist of merged.values()) {
-      playlist.selected = config.selectedPlaylists.includes(playlist.id)
+      playlist.selected = selectedIds.has(normalizePlaylistId(playlist.id))
     }
 
-    return [...merged.values()].sort((a, b) => a.title.localeCompare(b.title))
+    return {
+      playlists: [...merged.values()].sort((a, b) => a.title.localeCompare(b.title)),
+      libraryError
+    }
   }
 
   async getPlaylistTracks(playlistId: string): Promise<{ name: string; tracks: RemoteTrack[] }> {
@@ -481,9 +522,78 @@ function parseDuration(text: string): number | null {
   return null
 }
 
-function extractContinuation(response: unknown): string | null {
-  const token = deepFind(response, 'continuation')
-  return typeof token === 'string' ? token : null
+function diagnoseLibraryBrowseResponse(response: unknown): string {
+  const payload = JSON.stringify(response ?? {})
+  const parts: string[] = []
+
+  if (
+    payload.includes('Looking for what you') ||
+    payload.includes('SIGN_IN') ||
+    payload.includes('"logged_in","value":"0"') ||
+    payload.includes('"key":"logged_in","value":"0"')
+  ) {
+    parts.push('signed-out')
+  } else if (
+    payload.includes('"logged_in","value":"1"') ||
+    payload.includes('"key":"logged_in","value":"1"')
+  ) {
+    parts.push('logged-in')
+  }
+
+  let twoRow = 0
+  let responsive = 0
+  let navButton = 0
+  let grid = 0
+  let playlistPage = 0
+  const sampleIds: string[] = []
+
+  walk(response, (node) => {
+    if (!node || typeof node !== 'object') return
+    const record = node as Record<string, unknown>
+    if ('musicTwoRowItemRenderer' in record) twoRow++
+    if ('musicResponsiveListItemRenderer' in record) responsive++
+    if ('musicNavigationButtonRenderer' in record) navButton++
+    if ('gridRenderer' in record) grid++
+    if (record.pageType === 'MUSIC_PAGE_TYPE_PLAYLIST') playlistPage++
+
+    if ('browseId' in record && typeof record.browseId === 'string' && sampleIds.length < 8) {
+      sampleIds.push(record.browseId.slice(0, 24))
+    }
+  })
+
+  parts.push(`twoRow=${twoRow}`)
+  parts.push(`responsive=${responsive}`)
+  parts.push(`navButton=${navButton}`)
+  parts.push(`grid=${grid}`)
+  parts.push(`playlistPage=${playlistPage}`)
+  if (sampleIds.length > 0) parts.push(`ids=${sampleIds.join(',')}`)
+  parts.push(`bytes=${payload.length}`)
+  return parts.join(' ')
+}
+
+function extractLibraryContinuation(response: unknown): string | null {
+  const grid = deepFind(response, 'gridRenderer')
+  if (grid && typeof grid === 'object') {
+    const token = tokenFromContinuations((grid as Record<string, unknown>).continuations)
+    if (token) return token
+  }
+
+  const gridContinuation = deepFind(response, 'gridContinuation')
+  if (gridContinuation && typeof gridContinuation === 'object') {
+    const token = tokenFromContinuations((gridContinuation as Record<string, unknown>).continuations)
+    if (token) return token
+  }
+
+  const contContents = deepFind(response, 'continuationContents')
+  if (contContents && typeof contContents === 'object') {
+    const nested = (contContents as Record<string, unknown>).gridContinuation
+    if (nested && typeof nested === 'object') {
+      const token = tokenFromContinuations((nested as Record<string, unknown>).continuations)
+      if (token) return token
+    }
+  }
+
+  return null
 }
 
 function extractGridPlaylistItems(response: unknown): Array<{
@@ -518,9 +628,10 @@ function extractGridPlaylistItems(response: unknown): Array<{
     if ('musicNavigationButtonRenderer' in record) {
       const item = record.musicNavigationButtonRenderer as Record<string, unknown>
       const title = extractText(item.buttonText)
-      const browseId = deepFind(item, 'browseId')
-      const playlistId = typeof browseId === 'string' ? browseId : null
-      if (!playlistId || !title || playlistId === 'FEmusic_liked_playlists') return
+      const browseId = extractBrowseIdFromEndpoint(item.navigationEndpoint) ?? deepFind(item, 'browseId')
+      const playlistId =
+        typeof browseId === 'string' ? normalizePlaylistId(browseId) : null
+      if (!playlistId || !title || !isLibraryPlaylistId(playlistId)) return
       results.push({ id: playlistId, title, count: 0, thumbnails: [] })
     }
   })
@@ -565,6 +676,42 @@ function normalizePlaylistId(id: string): string {
   return id
 }
 
+function isLibraryPlaylistId(id: string): boolean {
+  return /^(PL|LM|OLAK)/.test(id)
+}
+
+function extractBrowseIdFromEndpoint(endpoint: unknown): string | null {
+  if (!endpoint || typeof endpoint !== 'object') return null
+  const browse = (endpoint as Record<string, unknown>).browseEndpoint
+  if (!browse || typeof browse !== 'object') return null
+  const browseId = (browse as Record<string, unknown>).browseId
+  return typeof browseId === 'string' ? browseId : null
+}
+
+function extractPlaylistBrowseId(item: Record<string, unknown>): string | null {
+  const title = item.title
+  if (title && typeof title === 'object') {
+    const runs = (title as Record<string, unknown>).runs
+    if (Array.isArray(runs)) {
+      for (const run of runs) {
+        if (!run || typeof run !== 'object') continue
+        const browseId = extractBrowseIdFromEndpoint(
+          (run as Record<string, unknown>).navigationEndpoint
+        )
+        if (browseId) return browseId
+      }
+    }
+  }
+
+  const topLevel = extractBrowseIdFromEndpoint(item.navigationEndpoint)
+  if (topLevel) return topLevel
+
+  const playlistId = item.playlistId
+  if (typeof playlistId === 'string') return playlistId
+
+  return null
+}
+
 function parsePlaylistCard(item: Record<string, unknown>): {
   id: string
   title: string
@@ -573,9 +720,9 @@ function parsePlaylistCard(item: Record<string, unknown>): {
 } | null {
   const title = extractText(item.title)
   const subtitle = extractText(item.subtitle)
-  const browseId = deepFind(item, 'browseId')
-  const playlistId = typeof browseId === 'string' ? normalizePlaylistId(browseId) : null
-  if (!playlistId || !title || !playlistId.startsWith('PL')) return null
+  const browseId = extractPlaylistBrowseId(item)
+  const playlistId = browseId ? normalizePlaylistId(browseId) : null
+  if (!playlistId || !title || !isLibraryPlaylistId(playlistId)) return null
 
   const countMatch = subtitle?.match(/(\d+)/)
   return {
@@ -592,12 +739,9 @@ function parseResponsivePlaylist(item: Record<string, unknown>): {
   count: number
   thumbnails: Array<{ url: string; width: number; height: number }>
 } | null {
-  const playlistIdRaw =
-    deepFind(item, 'playlistId') ??
-    deepFind(item, 'browseId')
-  const playlistId =
-    typeof playlistIdRaw === 'string' ? normalizePlaylistId(playlistIdRaw) : null
-  if (!playlistId || !playlistId.startsWith('PL')) return null
+  const browseId = extractPlaylistBrowseId(item)
+  const playlistId = browseId ? normalizePlaylistId(browseId) : null
+  if (!playlistId || !isLibraryPlaylistId(playlistId)) return null
 
   const flexColumns = item.flexColumns
   const title =

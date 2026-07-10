@@ -55,8 +55,26 @@ jobs:
           git push origin "HEAD:release"
           git push origin "v${{ steps.bump.outputs.version }}"
 
+      # Pre-create an empty draft so parallel electron-builder uploads all target
+      # the same release instead of racing to create duplicate ones.
+      - name: Create draft GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          gh release create "v${{ steps.bump.outputs.version }}" \
+            --draft \
+            --title "${{ steps.bump.outputs.version }}" \
+            --generate-notes
+
       - name: Build and publish to GitHub Releases
         run: npm run build:win:publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      - name: Publish draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: gh release edit "v${{ steps.bump.outputs.version }}" --draft=false

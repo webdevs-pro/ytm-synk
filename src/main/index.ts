@@ -4,6 +4,8 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { registerIpcHandlers } from './ipc/handlers'
 import { authService } from './services/auth'
+import { database } from './services/database'
+import { logger } from './services/logger'
 import { setMainWindow } from './services/window'
 
 function resolveUserDataDir(): string {
@@ -59,6 +61,11 @@ app.whenReady().then(async () => {
   })
 
   await authService.load()
+  const retentionDays = database.getConfig().logRetentionDays
+  const cleaned = logger.clearOldLogs(retentionDays)
+  logger.info(
+    `App started. Cleared ${cleaned.deleted} log file(s) older than ${retentionDays || 10} day(s).`
+  )
   registerIpcHandlers()
   createWindow()
 

@@ -13,7 +13,8 @@ const DEFAULT_CONFIG: AppConfig = {
   selectedPlaylists: [],
   manualPlaylists: [],
   downloadFormat: 'mp3',
-  downloadQuality: 'best'
+  downloadQuality: 'best',
+  logRetentionDays: 10
 }
 
 function ensureUserData(): void {

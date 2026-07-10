@@ -147,6 +147,36 @@ export function SettingsPage(): React.JSX.Element {
           </button>
           <button onClick={() => void window.api.settings.openLogs()}>Open logs folder</button>
         </div>
+        <p className="muted">
+          Sync runs write files like <code>sync-YYYYMMDD-HHMMSS.log</code>. App events go to{' '}
+          <code>app-YYYY-MM-DD.log</code>.
+        </p>
+        <div className="row" style={{ marginTop: '0.75rem' }}>
+          <label htmlFor="log-retention">Keep logs for</label>
+          <input
+            id="log-retention"
+            className="text-input"
+            style={{ flex: '0 0 5rem', minWidth: '5rem' }}
+            type="number"
+            min={1}
+            max={365}
+            defaultValue={config.logRetentionDays ?? 10}
+            key={config.logRetentionDays ?? 10}
+            onBlur={async (e) => {
+              const value = Number(e.target.value)
+              if (!Number.isFinite(value)) {
+                e.target.value = String(config.logRetentionDays ?? 10)
+                return
+              }
+              const next = await window.api.settings.set({ logRetentionDays: value })
+              setConfig(next)
+              setMessage(
+                `Logs older than ${next.logRetentionDays} day(s) will be deleted automatically.`
+              )
+            }}
+          />
+          <span className="muted">days</span>
+        </div>
       </section>
 
       <section className="card">

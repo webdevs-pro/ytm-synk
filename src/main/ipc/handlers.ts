@@ -8,6 +8,7 @@ import { IPC } from './channels'
 import { authService } from '../services/auth'
 import { database } from '../services/database'
 import { downloaderService } from '../services/downloader'
+import { logger } from '../services/logger'
 import { getLogsDir, getPlaylistFolder } from '../services/paths'
 import { syncService } from '../services/sync'
 import { getMainWindow } from '../services/window'
@@ -61,6 +62,7 @@ async function executeSync(playlistIds?: string[]): Promise<SyncSummary> {
   const window = getMainWindow()
   const playlistCount = playlistIds?.length ?? database.getConfig().selectedPlaylists.length
   let completedPlaylists = 0
+  logger.startSyncSession(playlistIds)
 
   const sendProgress = (progress: SyncProgress): void => {
     updateTaskbarProgress(window, progress, playlistCount, completedPlaylists)
@@ -70,6 +72,7 @@ async function executeSync(playlistIds?: string[]): Promise<SyncSummary> {
     window?.webContents.send(IPC.SYNC_PROGRESS, progress)
   }
   const sendLog = (entry: SyncLogEntry): void => {
+    logger.writeSyncEntry(entry)
     window?.webContents.send(IPC.SYNC_LOG, entry)
   }
 
@@ -77,6 +80,7 @@ async function executeSync(playlistIds?: string[]): Promise<SyncSummary> {
 
   try {
     const summary = await syncService.run({ onProgress: sendProgress, onLog: sendLog }, playlistIds)
+    logger.finishSyncSession(summary)
     setTaskbarDeterminate(window, 1)
     window?.webContents.send(IPC.SYNC_DONE, summary)
     return summary
@@ -96,6 +100,7 @@ async function executeSync(playlistIds?: string[]): Promise<SyncSummary> {
       message: err instanceof Error ? err.message : 'Sync failed',
       timestamp: new Date().toISOString()
     })
+    logger.finishSyncSession(summary, true)
     window?.webContents.send(IPC.SYNC_DONE, summary)
     throw err
   } finally {
@@ -156,9 +161,24 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle(IPC.SETTINGS_GET, () => database.getConfig())
 
-  ipcMain.handle(IPC.SETTINGS_SET, (_event, partial: Partial<AppConfig>) =>
-    database.updateConfig(partial)
-  )
+  ipcMain.handle(IPC.SETTINGS_SET, (_event, partial: Partial<AppConfig>) => {
+    const nextPartial = { ...partial }
+    if (typeof nextPartial.logRetentionDays === 'number') {
+      nextPartial.logRetentionDays = Math.min(
+        365,
+        Math.max(1, Math.floor(nextPartial.logRetentionDays))
+      )
+    }
+
+    const next = database.updateConfig(nextPartial)
+    if (typeof nextPartial.logRetentionDays === 'number') {
+      const cleaned = logger.clearOldLogs(next.logRetentionDays)
+      logger.info(
+        `Log retention set to ${next.logRetentionDays} day(s). Cleared ${cleaned.deleted} old log file(s).`
+      )
+    }
+    return next
+  })
 
   ipcMain.handle(IPC.SETTINGS_PICK_MUSIC_ROOT, async () => {
     const result = await dialog.showOpenDialog({
@@ -180,6 +200,7 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC.SETTINGS_OPEN_LOGS, async () => {
     const logsDir = getLogsDir()
     mkdirSync(logsDir, { recursive: true })
+    logger.clearOldLogs(database.getConfig().logRetentionDays)
     await shell.openPath(logsDir)
   })
 

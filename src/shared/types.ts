@@ -11,6 +11,7 @@ export interface AppConfig {
   manualPlaylists: SavedPlaylistMeta[]
   downloadFormat: 'mp3'
   downloadQuality: string
+  logRetentionDays: number
 }
 
 export interface LocalTrack {

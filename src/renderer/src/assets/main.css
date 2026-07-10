@@ -228,19 +228,36 @@ select.text-input {
   cursor: pointer;
 }
 
+.playlist-info {
+  flex: 1;
+  min-width: 0;
+}
+
 .playlist-actions {
   display: flex;
   gap: 0.5rem;
   flex-shrink: 0;
 }
 
-.playlist-sync-status {
-  margin-top: 0.35rem;
-  font-size: 0.85rem;
+.playlist-sync-progress {
+  margin-top: 0.5rem;
+}
+
+.playlist-sync-progress .progress-block {
+  gap: 0.25rem;
+}
+
+.playlist-sync-progress .progress-label {
+  font-size: 0.8rem;
   color: #d7e3ff;
-  white-space: normal;
-  overflow-wrap: anywhere;
-  word-break: break-word;
+}
+
+.playlist-sync-progress .progress-track {
+  height: 6px;
+}
+
+.playlist-sync-progress .progress-percent {
+  font-size: 0.75rem;
 }
 
 .progress-label {

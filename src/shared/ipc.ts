@@ -9,6 +9,8 @@ export const IPC = {
   PLAYLISTS_REMOVE: 'playlists:remove',
   PLAYLISTS_SYNC: 'playlists:sync',
   SYNC_RUN: 'sync:run',
+  SYNC_STOP: 'sync:stop',
+  SYNC_IS_RUNNING: 'sync:is-running',
   SYNC_PROGRESS: 'sync:progress',
   SYNC_LOG: 'sync:log',
   SYNC_DONE: 'sync:done',

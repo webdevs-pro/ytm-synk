@@ -10,10 +10,20 @@ import type {
   SyncSummary
 } from '../../shared/types'
 import { database } from './database'
-import { downloaderService } from './downloader'
+import { DownloadCancelledError, downloaderService } from './downloader'
 import { buildTrackFileName, extractVideoIdFromFileName, resolveUniqueFileName } from './filename'
 import { getPlaylistFolder } from './paths'
 import { ytmusicService } from './ytmusic'
+
+export class SyncStoppedError extends Error {
+  readonly summary: SyncSummary
+
+  constructor(summary: SyncSummary) {
+    super('Sync stopped')
+    this.name = 'SyncStoppedError'
+    this.summary = { ...summary, stopped: true }
+  }
+}
 
 export type SyncEventEmitter = {
   onProgress: (progress: SyncProgress) => void
@@ -171,9 +181,23 @@ function formatTrackLabel(track: RemoteTrack): string {
 
 export class SyncService {
   private running = false
+  private stopRequested = false
 
   isRunning(): boolean {
     return this.running
+  }
+
+  stop(): boolean {
+    if (!this.running) return false
+    this.stopRequested = true
+    downloaderService.cancel()
+    return true
+  }
+
+  private assertNotStopped(summary: SyncSummary): void {
+    if (this.stopRequested) {
+      throw new SyncStoppedError(summary)
+    }
   }
 
   async run(emit: SyncEventEmitter, playlistIds?: string[]): Promise<SyncSummary> {
@@ -182,6 +206,7 @@ export class SyncService {
     }
 
     this.running = true
+    this.stopRequested = false
     const summary: SyncSummary = {
       downloaded: 0,
       deleted: 0,
@@ -208,10 +233,12 @@ export class SyncService {
       mkdirSync(config.musicRoot, { recursive: true })
 
       for (const playlistId of targets) {
+        this.assertNotStopped(summary)
         try {
           await this.syncPlaylist(playlistId, config.musicRoot, config.downloadQuality, emit, summary)
           summary.playlists++
         } catch (err) {
+          if (err instanceof SyncStoppedError) throw err
           summary.errors++
           emit.onLog({
             level: 'error',
@@ -225,6 +252,7 @@ export class SyncService {
       return summary
     } finally {
       this.running = false
+      this.stopRequested = false
     }
   }
 
@@ -298,6 +326,7 @@ export class SyncService {
     emitWork('deleting')
 
     for (const [filePath, orphan] of orphans) {
+      this.assertNotStopped(summary)
       if (orphan.videoId) {
         delete existing.tracks[orphan.videoId]
       }
@@ -335,6 +364,8 @@ export class SyncService {
     const keepIds = new Set(toKeep.map((track) => track.videoId))
 
     for (const track of remote.tracks) {
+      this.assertNotStopped(summary)
+
       if (keepIds.has(track.videoId)) {
         workCurrent++
         emitWork('downloading', `Skipped: ${formatTrackLabel(track)}`)
@@ -387,6 +418,9 @@ export class SyncService {
           videoId: track.videoId
         })
       } catch (err) {
+        if (err instanceof DownloadCancelledError || err instanceof SyncStoppedError) {
+          throw new SyncStoppedError(summary)
+        }
         summary.errors++
         emit.onLog({
           level: 'error',

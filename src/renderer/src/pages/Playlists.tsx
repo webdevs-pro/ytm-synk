@@ -107,10 +107,14 @@ export function PlaylistsPage(): React.JSX.Element {
       await window.api.playlists.sync(playlist.id)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to sync playlist'
-      setError(message)
-      toast({ title: 'Sync failed', description: message, variant: 'error' })
       setSyncingId(null)
       setSyncProgress(null)
+      if (/sync stopped/i.test(message)) {
+        setError(null)
+        return
+      }
+      setError(message)
+      toast({ title: 'Sync failed', description: message, variant: 'error' })
     }
   }
 

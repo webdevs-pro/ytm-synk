@@ -18,6 +18,9 @@ function AppToasts(): null {
   useEffect(() => {
     const unsubDone = window.api.sync.onDone((summary: SyncSummary) => {
       // Hard failures also emit SYNC_DONE then throw; pages toast the real error message.
+      // Stopped syncs are toasted by the Sync page.
+      if (summary.stopped) return
+
       const hardFailure =
         summary.playlists === 0 &&
         summary.downloaded === 0 &&

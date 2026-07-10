@@ -21,6 +21,8 @@ const api: YtmApi = {
   },
   sync: {
     run: () => ipcRenderer.invoke(IPC.SYNC_RUN),
+    stop: () => ipcRenderer.invoke(IPC.SYNC_STOP),
+    isRunning: () => ipcRenderer.invoke(IPC.SYNC_IS_RUNNING),
     onProgress: (callback) => {
       const listener = (_event: Electron.IpcRendererEvent, progress: SyncProgress): void =>
         callback(progress)

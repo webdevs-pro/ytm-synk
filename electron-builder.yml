@@ -32,9 +32,13 @@ nsis:
   installerIcon: build/icon.ico
   uninstallerIcon: build/icon.ico
   installerHeaderIcon: build/icon.ico
+# releaseType: draft — electron-builder uploads the installer, blockmap, and
+# latest.yml in parallel. If no release exists yet, each upload races to create
+# one; losers abort and leave a partial release (assets unreachable by tag URL).
+# The release workflow pre-creates an empty draft, then publishes it after upload.
 publish:
   provider: github
   owner: webdevs-pro
   repo: ytm-synk
-  releaseType: release
+  releaseType: draft
 npmRebuild: false

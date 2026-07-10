@@ -1,28 +1,51 @@
 # YTM-Synk
 
-Windows desktop app that mirrors selected YouTube Music playlists into local per-playlist MP3 folders.
+**YouTube Music synchronizer** — a Windows desktop app that mirrors YouTube Music playlists into local MP3 folders.
+
+Built with Electron, React, TypeScript, `ytmusic-api`, `yt-dlp`, and `ffmpeg`.
 
 ## Features
 
-- Sign in to YouTube Music (in-app browser or cookies.txt import)
-- Browse your library playlists and choose which ones to mirror
-- Manual sync: download new tracks, delete removed tracks, skip already-synced files
-- JSON index stored in app user data
-- Bundled `yt-dlp` and `ffmpeg`
+- **Sign in** via in-app browser, or import a browser `cookies.txt`
+- **Add playlists manually** by URL or ID (`PLxxx…`, `LM` for Liked Music) when library browse is empty
+- **Per-playlist Sync** or sync all selected playlists at once
+- **Mirror sync**: download new tracks, skip files already on disk, delete tracks removed from the playlist
+- **Per-playlist folders** under your music root
+- **Download quality** options (best available, or 128–320 kbps)
+- **Windows taskbar progress** while syncing
+- **Sync logs** on disk with configurable retention (default 10 days)
+- Bundled **yt-dlp**, **ffmpeg**, and a JS runtime for yt-dlp
+
+## Requirements
+
+- Windows 10/11
+- Node.js 20+ (for development)
+- A YouTube Music account
 
 ## Development
 
 ```bash
 npm install
+npm run download-binaries   # if binaries are missing
 npm run dev
 ```
 
-If install scripts were blocked, approve them and re-run:
+If Electron install scripts were blocked:
 
 ```bash
-npm install-scripts approve electron ffmpeg-static
-npm install
+node node_modules/electron/install.js
+npm run download-binaries
+npm run dev
 ```
+
+Useful scripts:
+
+| Command | Description |
+| --- | --- |
+| `npm run dev` | Run in development |
+| `npm run typecheck` | TypeScript checks |
+| `npm run build:win` | Build Windows installer |
+| `npm run download-binaries` | Fetch yt-dlp / ffmpeg / Deno |
 
 ## Build (Windows)
 
@@ -30,20 +53,53 @@ npm install
 npm run build:win
 ```
 
-Installer output is written to `release/`.
+Output is written to `release/`.
 
 ## Usage
 
-1. Open **Settings** and choose your music root folder.
-2. Sign in to YouTube Music or import a `cookies.txt` file.
-3. Open **Playlists** and select playlists to mirror.
-4. Open **Sync** and click **Sync now**.
+1. Open **Settings** and choose your music folder.
+2. Sign in to YouTube Music (or import `cookies.txt`).
+3. Open **Playlists**:
+   - Add a playlist by URL/ID if needed
+   - Check playlists to include in bulk sync
+   - Use **Sync** on a row to sync only that playlist
+   - Use **Remove** to drop a playlist (optional: delete its local folder)
+4. Open **Sync** and click **Sync now** to sync all selected playlists.
 
-Each selected playlist is stored under:
+Local layout:
 
 ```text
-<musicRoot>/<Playlist Name>/*.mp3
+<musicRoot>/<Playlist Name>/Artist - Title [videoId].mp3
 ```
+
+App data (config, auth, indexes, logs):
+
+```text
+%APPDATA%\ytm-synk\
+  config.json
+  auth.json
+  cookies.txt
+  playlists\
+  logs\
+```
+
+## How sync works
+
+For each playlist:
+
+1. Fetch the full track list from YouTube Music (paginated)
+2. Scan the local folder and adopt existing MP3s by video ID
+3. Delete files that are no longer in the playlist
+4. Download missing tracks with yt-dlp → MP3 + tags/cover art
+5. Update the JSON index and write a sync log file
+
+## Settings
+
+- Music folder
+- YouTube Music sign-in / cookies import
+- Download quality
+- Log retention (days) and open logs folder
+- Update bundled yt-dlp
 
 ## Personal use
 

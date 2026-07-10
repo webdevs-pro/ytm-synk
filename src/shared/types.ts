@@ -71,6 +71,10 @@ export interface SyncProgress {
   current: number
   total: number
   currentTrack?: string
+  /** 1-based index of the playlist currently being synced */
+  playlistIndex: number
+  /** Total playlists in this sync run */
+  playlistTotal: number
 }
 
 export interface SyncSummary {

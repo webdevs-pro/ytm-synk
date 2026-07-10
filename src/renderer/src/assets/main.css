@@ -304,6 +304,10 @@ select.text-input {
   gap: 0.35rem;
 }
 
+.progress-block + .progress-block {
+  margin-top: 1rem;
+}
+
 .progress-track {
   height: 10px;
   background: #0f1218;

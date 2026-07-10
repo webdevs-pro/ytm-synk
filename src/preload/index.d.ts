@@ -1,5 +1,5 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
-import type { AppConfig, AppUpdateStatus, AuthStatus, DownloaderInfo, PlaylistSummary, SyncLogEntry, SyncProgress, SyncSummary } from '../shared/types'
+import type { AppConfig, AppUpdateStatus, AuthStatus, DownloaderInfo, PlaylistListResult, PlaylistSummary, SyncLogEntry, SyncProgress, SyncSummary } from '../shared/types'
 
 export interface YtmApi {
   auth: {
@@ -13,7 +13,7 @@ export interface YtmApi {
     }>
   }
   playlists: {
-    list: () => Promise<PlaylistSummary[]>
+    list: () => Promise<PlaylistListResult>
     toggle: (playlistId: string, selected: boolean) => Promise<AppConfig>
     add: (input: string) => Promise<PlaylistSummary>
     remove: (playlistId: string, deleteFolder: boolean) => Promise<{ success: boolean }>

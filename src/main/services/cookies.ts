@@ -192,7 +192,7 @@ function makeSidAuthorization(scheme: string, secret: string, origin: string): s
 
 export function buildAuthorizationHeader(
   cookieHeader: string,
-  origin = 'https://www.youtube.com'
+  origin = 'https://music.youtube.com'
 ): string | null {
   const { sapisid, papisid1, papisid3 } = getSidSecrets(cookieHeader)
   const parts = [
@@ -360,12 +360,14 @@ export function configureYtmusicClient(client: YtmCookieClient, cookieHeader: st
     createElectronSessionAdapter(loginSession)
 
   client.client.interceptors.request.use((config) => {
-    const authorization = buildAuthorizationHeader(cookieHeader, 'https://www.youtube.com')
+    const origin = 'https://music.youtube.com'
+    const authorization = buildAuthorizationHeader(cookieHeader, origin)
     if (authorization) config.headers.Authorization = authorization
-    config.headers.Origin = 'https://music.youtube.com'
-    config.headers['X-Origin'] = 'https://music.youtube.com'
-    delete config.headers.Cookie
-    delete config.headers.cookie
+    config.headers.Origin = origin
+    config.headers['X-Origin'] = origin
+    // Keep Cookie in sync with the SAPISIDHASH secret (do not rely only on partition cookies).
+    config.headers.Cookie = cookieHeader
+    config.headers.cookie = cookieHeader
     return config
   })
 }

@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import { IPC } from '../shared/ipc'
-import type { SyncLogEntry, SyncProgress, SyncSummary } from '../shared/types'
+import type { AppUpdateStatus, SyncLogEntry, SyncProgress, SyncSummary } from '../shared/types'
 import type { YtmApi } from './index.d'
 
 const api: YtmApi = {
@@ -50,6 +50,17 @@ const api: YtmApi = {
   downloader: {
     info: () => ipcRenderer.invoke(IPC.DOWNLOADER_INFO),
     update: () => ipcRenderer.invoke(IPC.DOWNLOADER_UPDATE)
+  },
+  updater: {
+    getStatus: () => ipcRenderer.invoke(IPC.UPDATER_GET_STATUS),
+    check: () => ipcRenderer.invoke(IPC.UPDATER_CHECK),
+    install: () => ipcRenderer.invoke(IPC.UPDATER_INSTALL),
+    onStatus: (callback) => {
+      const listener = (_event: Electron.IpcRendererEvent, status: AppUpdateStatus): void =>
+        callback(status)
+      ipcRenderer.on(IPC.UPDATER_STATUS, listener)
+      return () => ipcRenderer.removeListener(IPC.UPDATER_STATUS, listener)
+    }
   }
 }
 

@@ -11,6 +11,11 @@ import { downloaderService } from '../services/downloader'
 import { logger } from '../services/logger'
 import { getLogsDir, getPlaylistFolder } from '../services/paths'
 import { syncService } from '../services/sync'
+import {
+  checkForAppUpdates,
+  getUpdateStatus,
+  installAppUpdate
+} from '../services/updater'
 import { getMainWindow } from '../services/window'
 import { ytmusicService } from '../services/ytmusic'
 
@@ -219,6 +224,15 @@ export function registerIpcHandlers(): void {
       ...downloaderService.getInfo(),
       version: await downloaderService.getVersion()
     }
+  })
+
+  ipcMain.handle(IPC.UPDATER_GET_STATUS, () => getUpdateStatus())
+
+  ipcMain.handle(IPC.UPDATER_CHECK, async () => checkForAppUpdates(true))
+
+  ipcMain.handle(IPC.UPDATER_INSTALL, () => {
+    installAppUpdate()
+    return { success: true }
   })
 
   ipcMain.handle(IPC.SYNC_RUN, async () => executeSync())

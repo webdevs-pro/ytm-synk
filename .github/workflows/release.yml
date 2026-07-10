@@ -35,25 +35,21 @@ jobs:
       - name: Download binaries
         run: npm run download-binaries
 
-      - name: Bump patch version
-        id: bump
+      - name: Read version from package.json
+        id: version
         shell: bash
         run: |
-          npm version patch --no-git-tag-version
           VERSION="$(node -p "require('./package.json').version")"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "Bumped version to ${VERSION}"
+          echo "Releasing v${VERSION}"
 
-      - name: Commit version and create tag
+      - name: Create and push tag
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add package.json package-lock.json
-          git commit -m "chore: release v${{ steps.bump.outputs.version }} [skip ci]"
-          git tag "v${{ steps.bump.outputs.version }}"
-          git push origin "HEAD:release"
-          git push origin "v${{ steps.bump.outputs.version }}"
+          git tag "v${{ steps.version.outputs.version }}"
+          git push origin "v${{ steps.version.outputs.version }}"
 
       # Pre-create an empty draft so parallel electron-builder uploads all target
       # the same release instead of racing to create duplicate ones.
@@ -62,9 +58,9 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
-          gh release create "v${{ steps.bump.outputs.version }}" \
+          gh release create "v${{ steps.version.outputs.version }}" \
             --draft \
-            --title "${{ steps.bump.outputs.version }}" \
+            --title "${{ steps.version.outputs.version }}" \
             --generate-notes
 
       - name: Build and publish to GitHub Releases
@@ -77,4 +73,4 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
-        run: gh release edit "v${{ steps.bump.outputs.version }}" --draft=false
+        run: gh release edit "v${{ steps.version.outputs.version }}" --draft=false

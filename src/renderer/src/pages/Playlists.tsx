@@ -1,6 +1,27 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
+import { ProgressBar } from '../components/ProgressBar'
 import { useToast } from '../components/Toast'
 import type { PlaylistSummary, SyncProgress } from '../../../shared/types'
+
+function normalizePlaylistId(id: string): string {
+  return id.startsWith('VL') ? id.slice(2) : id
+}
+
+function samePlaylistId(a: string, b: string): boolean {
+  return normalizePlaylistId(a) === normalizePlaylistId(b)
+}
+
+function syncPhaseLabel(progress: SyncProgress): string {
+  if (progress.phase === 'fetching') return 'Fetching playlist...'
+  if (progress.phase === 'deleting') {
+    return `Removing deleted tracks (${progress.current}/${Math.max(progress.total, 1)})...`
+  }
+  if (progress.phase === 'downloading') {
+    const track = progress.currentTrack ? ` · ${progress.currentTrack}` : ''
+    return `Downloading (${progress.current}/${Math.max(progress.total, 1)})${track}`
+  }
+  return 'Finishing...'
+}
 
 export function PlaylistsPage(): React.JSX.Element {
   const { toast } = useToast()
@@ -13,9 +34,8 @@ export function PlaylistsPage(): React.JSX.Element {
   const [deleteFolder, setDeleteFolder] = useState(false)
   const [removing, setRemoving] = useState(false)
   const [auth, setAuth] = useState<{ isAuthenticated: boolean } | null>(null)
-  const [syncingId, setSyncingId] = useState<string | null>(null)
+  const [syncRunning, setSyncRunning] = useState(false)
   const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null)
-  const syncingIdRef = useRef<string | null>(null)
 
   const load = async (): Promise<void> => {
     setLoading(true)
@@ -38,20 +58,16 @@ export function PlaylistsPage(): React.JSX.Element {
   useEffect(() => {
     void load()
     void window.api.auth.status().then(setAuth)
+    void window.api.sync.isRunning().then(setSyncRunning)
   }, [])
 
   useEffect(() => {
-    syncingIdRef.current = syncingId
-  }, [syncingId])
-
-  useEffect(() => {
     const unsubProgress = window.api.sync.onProgress((progress) => {
-      if (progress.playlistId === syncingIdRef.current) {
-        setSyncProgress(progress)
-      }
+      setSyncRunning(true)
+      setSyncProgress(progress)
     })
     const unsubDone = window.api.sync.onDone(() => {
-      setSyncingId(null)
+      setSyncRunning(false)
       setSyncProgress(null)
       void load()
     })
@@ -100,21 +116,31 @@ export function PlaylistsPage(): React.JSX.Element {
   }
 
   const syncPlaylist = async (playlist: PlaylistSummary): Promise<void> => {
+    if (syncRunning) return
     setError(null)
     setSyncProgress(null)
-    setSyncingId(playlist.id)
+    setSyncRunning(true)
     try {
       await window.api.playlists.sync(playlist.id)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to sync playlist'
-      setSyncingId(null)
+      setSyncRunning(false)
       setSyncProgress(null)
       if (/sync stopped/i.test(message)) {
         setError(null)
         return
       }
+      if (/already running/i.test(message)) {
+        setSyncRunning(true)
+        setError(null)
+        return
+      }
       setError(message)
       toast({ title: 'Sync failed', description: message, variant: 'error' })
+    } finally {
+      const stillRunning = await window.api.sync.isRunning()
+      setSyncRunning(stillRunning)
+      if (!stillRunning) setSyncProgress(null)
     }
   }
 
@@ -151,19 +177,6 @@ export function PlaylistsPage(): React.JSX.Element {
     } finally {
       setRemoving(false)
     }
-  }
-
-  const syncStatusLabel = (playlistId: string): string | null => {
-    if (syncingId !== playlistId || !syncProgress) return null
-    if (syncProgress.phase === 'fetching') return 'Fetching playlist...'
-    if (syncProgress.phase === 'deleting') {
-      return `Removing deleted tracks (${syncProgress.current}/${syncProgress.total})...`
-    }
-    if (syncProgress.phase === 'downloading') {
-      const track = syncProgress.currentTrack ? ` · ${syncProgress.currentTrack}` : ''
-      return `Downloading (${syncProgress.current}/${syncProgress.total})${track}`
-    }
-    return 'Finishing...'
   }
 
   if (loading) return <div className="page">Loading playlists...</div>
@@ -209,8 +222,10 @@ export function PlaylistsPage(): React.JSX.Element {
       ) : (
         <div className="playlist-grid">
           {playlists.map((playlist) => {
-            const status = syncStatusLabel(playlist.id)
-            const isSyncing = syncingId === playlist.id
+            const isActive =
+              syncRunning &&
+              syncProgress !== null &&
+              samePlaylistId(syncProgress.playlistId, playlist.id)
 
             return (
               <div key={playlist.id} className="playlist-card">
@@ -218,10 +233,10 @@ export function PlaylistsPage(): React.JSX.Element {
                   <input
                     type="checkbox"
                     checked={playlist.selected}
-                    disabled={Boolean(syncingId)}
+                    disabled={syncRunning}
                     onChange={() => void toggle(playlist)}
                   />
-                  <div>
+                  <div className="playlist-info">
                     <div className="playlist-title">{playlist.title}</div>
                     <div className="muted">
                       {playlist.count} tracks
@@ -229,21 +244,31 @@ export function PlaylistsPage(): React.JSX.Element {
                         ? ` · last synced ${new Date(playlist.lastSyncedAt).toLocaleString()}`
                         : ''}
                     </div>
-                    {status ? <div className="playlist-sync-status">{status}</div> : null}
+                    {isActive && syncProgress ? (
+                      <div className="playlist-sync-progress">
+                        <ProgressBar
+                          value={syncProgress.current}
+                          max={Math.max(syncProgress.total, 1)}
+                          label={syncPhaseLabel(syncProgress)}
+                        />
+                      </div>
+                    ) : null}
                   </div>
                 </label>
                 <div className="playlist-actions">
                   <button
                     type="button"
-                    disabled={!auth?.isAuthenticated || Boolean(syncingId)}
+                    disabled={
+                      !auth?.isAuthenticated || syncRunning || !playlist.selected
+                    }
                     onClick={() => void syncPlaylist(playlist)}
                   >
-                    {isSyncing ? 'Syncing...' : 'Sync'}
+                    {isActive ? 'Syncing...' : 'Sync'}
                   </button>
                   <button
                     type="button"
                     className="button-danger"
-                    disabled={Boolean(syncingId)}
+                    disabled={syncRunning}
                     onClick={() => openRemoveDialog(playlist)}
                   >
                     Remove

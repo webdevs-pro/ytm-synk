@@ -1,8 +1,29 @@
+# Dependencies
 node_modules
+
+# Build outputs
 dist
 out
+release
+
+# Downloaded binaries (yt-dlp, ffmpeg, deno)
 bin
+
+# Logs & caches
 *.log
-.DS_Store
 .eslintcache
+*.tsbuildinfo
+
+# Local / env
 *.local
+.env
+.env.*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea
+.vscode/*
+!.vscode/extensions.json

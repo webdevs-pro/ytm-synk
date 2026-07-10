@@ -4,7 +4,11 @@
   "description": "Sync YouTube Music playlists to local MP3 files",
   "main": "./out/main/index.js",
   "author": "ytm-synk",
-  "homepage": "https://github.com/ytm-synk/ytm-synk",
+  "homepage": "https://github.com/webdevs-pro/ytm-synk",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/webdevs-pro/ytm-synk.git"
+  },
   "scripts": {
     "format": "prettier --write .",
     "lint": "eslint --cache .",
@@ -18,6 +22,7 @@
     "download-binaries": "node scripts/download-binaries.js",
     "build:unpack": "npm run build && electron-builder --dir",
     "build:win": "npm run build && electron-builder --win",
+    "build:win:publish": "npm run build && electron-builder --win --publish always",
     "build:mac": "electron-vite build && electron-builder --mac",
     "build:linux": "electron-vite build && electron-builder --linux"
   },

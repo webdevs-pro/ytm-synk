@@ -55,6 +55,17 @@ npm run build:win
 
 Output is written to `release/`.
 
+## Releasing
+
+Push (or merge) to the `release` branch to publish a new GitHub Release:
+
+1. CI bumps the patch version in `package.json` (e.g. `1.0.0` → `1.0.1`)
+2. Creates tag `v1.0.1`
+3. Builds the Windows NSIS installer
+4. Uploads it to a GitHub Release
+
+For a minor/major bump, change the version on `main` first, merge to `release`, then push.
+
 ## Usage
 
 1. Open **Settings** and choose your music folder.

@@ -17,8 +17,11 @@ extraResources:
       - '**/*'
   - from: scripts/download-binaries.js
     to: scripts/download-binaries.js
+  - from: resources/icon.png
+    to: icon.png
 win:
   executableName: YTM-Synk
+  icon: build/icon.ico
   target:
     - nsis
 nsis:
@@ -26,4 +29,12 @@ nsis:
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  installerHeaderIcon: build/icon.ico
+publish:
+  provider: github
+  owner: webdevs-pro
+  repo: ytm-synk
+  releaseType: release
 npmRebuild: false

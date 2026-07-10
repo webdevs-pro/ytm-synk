@@ -1,4 +1,5 @@
 import { app, BrowserWindow, shell } from 'electron'
+import { existsSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
@@ -20,6 +21,16 @@ function resolveUserDataDir(): string {
 
 app.setPath('userData', resolveUserDataDir())
 
+function resolveAppIcon(): string | undefined {
+  const candidates = [
+    join(process.resourcesPath, 'icon.png'),
+    join(app.getAppPath(), 'resources', 'icon.png'),
+    join(__dirname, '../../resources/icon.png'),
+    join(__dirname, '../../build/icon.ico')
+  ]
+  return candidates.find((path) => existsSync(path))
+}
+
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
     width: 1100,
@@ -29,6 +40,7 @@ function createWindow(): void {
     show: false,
     autoHideMenuBar: true,
     title: 'YouTube Music synchronizer',
+    icon: resolveAppIcon(),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false

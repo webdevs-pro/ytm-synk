@@ -25,7 +25,7 @@ function updateStatusText(status: AppUpdateStatus | null): string {
 }
 
 export function SettingsPage(): React.JSX.Element {
-  const { toast } = useToast()
+  const { toast, dismiss } = useToast()
   const [config, setConfig] = useState<AppConfig | null>(null)
   const [auth, setAuth] = useState<{ isAuthenticated: boolean; accountName: string | null } | null>(
     null
@@ -124,27 +124,40 @@ export function SettingsPage(): React.JSX.Element {
 
   const updateYtDlp = async (): Promise<void> => {
     setBusy(true)
-    const info = await window.api.downloader.update()
-    setBusy(false)
-    setDownloader({
-      version: info.version,
-      ytdlpExists: info.ytdlpExists,
-      ffmpegExists: info.ffmpegExists,
-      jsRuntimeKind: info.jsRuntimeKind,
-      jsRuntimeExists: info.jsRuntimeExists
+    const checkingId = toast({
+      title: 'Checking for updates',
+      variant: 'info',
+      duration: 0
     })
-    toast({
-      title: 'yt-dlp updated',
-      description: `${info.version || 'latest'} — restart the app to use it.`,
-      variant: 'success',
-      duration: 0,
-      action: {
-        label: 'Restart',
-        onClick: () => {
-          void window.api.app.relaunch()
+    try {
+      const info = await window.api.downloader.update()
+      dismiss(checkingId)
+      setDownloader({
+        version: info.version,
+        ytdlpExists: info.ytdlpExists,
+        ffmpegExists: info.ffmpegExists,
+        jsRuntimeKind: info.jsRuntimeKind,
+        jsRuntimeExists: info.jsRuntimeExists
+      })
+      toast({
+        title: 'yt-dlp updated',
+        description: `${info.version || 'latest'} — restart the app to use it.`,
+        variant: 'success',
+        duration: 0,
+        action: {
+          label: 'Restart',
+          onClick: () => {
+            void window.api.app.relaunch()
+          }
         }
-      }
-    })
+      })
+    } catch (err) {
+      dismiss(checkingId)
+      const message = err instanceof Error ? err.message : 'Failed to update yt-dlp'
+      toast({ title: 'yt-dlp update failed', description: message, variant: 'error' })
+    } finally {
+      setBusy(false)
+    }
   }
 
   const checkForUpdates = async (): Promise<void> => {

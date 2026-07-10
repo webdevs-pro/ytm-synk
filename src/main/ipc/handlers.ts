@@ -13,6 +13,7 @@ import { getLogsDir, getPlaylistFolder } from '../services/paths'
 import { syncService } from '../services/sync'
 import {
   checkForAppUpdates,
+  downloadAppUpdate,
   getUpdateStatus,
   installAppUpdate
 } from '../services/updater'
@@ -219,16 +220,27 @@ export function registerIpcHandlers(): void {
       ? join(process.resourcesPath, 'scripts', 'download-binaries.js')
       : join(app.getAppPath(), 'scripts', 'download-binaries.js')
     const cwd = app.isPackaged ? process.resourcesPath : app.getAppPath()
-    await execFileAsync(process.execPath, [script], { cwd })
+    await execFileAsync(process.execPath, [script], {
+      cwd,
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }
+    })
     return {
       ...downloaderService.getInfo(),
       version: await downloaderService.getVersion()
     }
   })
 
+  ipcMain.handle(IPC.APP_RELAUNCH, () => {
+    app.relaunch()
+    app.quit()
+    return { success: true }
+  })
+
   ipcMain.handle(IPC.UPDATER_GET_STATUS, () => getUpdateStatus())
 
   ipcMain.handle(IPC.UPDATER_CHECK, async () => checkForAppUpdates(true))
+
+  ipcMain.handle(IPC.UPDATER_DOWNLOAD, async () => downloadAppUpdate())
 
   ipcMain.handle(IPC.UPDATER_INSTALL, () => {
     installAppUpdate()

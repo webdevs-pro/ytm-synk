@@ -51,9 +51,13 @@ const api: YtmApi = {
     info: () => ipcRenderer.invoke(IPC.DOWNLOADER_INFO),
     update: () => ipcRenderer.invoke(IPC.DOWNLOADER_UPDATE)
   },
+  app: {
+    relaunch: () => ipcRenderer.invoke(IPC.APP_RELAUNCH)
+  },
   updater: {
     getStatus: () => ipcRenderer.invoke(IPC.UPDATER_GET_STATUS),
     check: () => ipcRenderer.invoke(IPC.UPDATER_CHECK),
+    download: () => ipcRenderer.invoke(IPC.UPDATER_DOWNLOAD),
     install: () => ipcRenderer.invoke(IPC.UPDATER_INSTALL),
     onStatus: (callback) => {
       const listener = (_event: Electron.IpcRendererEvent, status: AppUpdateStatus): void =>

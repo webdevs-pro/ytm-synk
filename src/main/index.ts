@@ -22,74 +22,87 @@ function resolveUserDataDir(): string {
 
 app.setPath('userData', resolveUserDataDir())
 
-function resolveAppIcon(): string | undefined {
-  const candidates = [
-    join(process.resourcesPath, 'icon.png'),
-    join(app.getAppPath(), 'resources', 'icon.png'),
-    join(__dirname, '../../resources/icon.png'),
-    join(__dirname, '../../build/icon.ico')
-  ]
-  return candidates.find((path) => existsSync(path))
-}
-
-function createWindow(): void {
-  const mainWindow = new BrowserWindow({
-    width: 1100,
-    height: 760,
-    minWidth: 900,
-    minHeight: 600,
-    show: false,
-    autoHideMenuBar: true,
-    title: 'YouTube Music synchronizer',
-    icon: resolveAppIcon(),
-    webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
+const gotTheLock = app.requestSingleInstanceLock()
+if (!gotTheLock) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    const win = BrowserWindow.getAllWindows()[0]
+    if (win) {
+      if (win.isMinimized()) win.restore()
+      win.focus()
     }
   })
 
-  setMainWindow(mainWindow)
-
-  mainWindow.on('ready-to-show', () => {
-    mainWindow.show()
-  })
-
-  mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
-    return { action: 'deny' }
-  })
-
-  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
-  } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+  function resolveAppIcon(): string | undefined {
+    const candidates = [
+      join(process.resourcesPath, 'icon.png'),
+      join(app.getAppPath(), 'resources', 'icon.png'),
+      join(__dirname, '../../resources/icon.png'),
+      join(__dirname, '../../build/icon.ico')
+    ]
+    return candidates.find((path) => existsSync(path))
   }
+
+  function createWindow(): void {
+    const mainWindow = new BrowserWindow({
+      width: 1100,
+      height: 760,
+      minWidth: 900,
+      minHeight: 600,
+      show: false,
+      autoHideMenuBar: true,
+      title: 'YouTube Music synchronizer',
+      icon: resolveAppIcon(),
+      webPreferences: {
+        preload: join(__dirname, '../preload/index.js'),
+        sandbox: false
+      }
+    })
+
+    setMainWindow(mainWindow)
+
+    mainWindow.on('ready-to-show', () => {
+      mainWindow.show()
+    })
+
+    mainWindow.webContents.setWindowOpenHandler((details) => {
+      shell.openExternal(details.url)
+      return { action: 'deny' }
+    })
+
+    if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+      mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
+    } else {
+      mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+    }
+  }
+
+  app.whenReady().then(async () => {
+    electronApp.setAppUserModelId('com.ytmsynk.app')
+
+    app.on('browser-window-created', (_, window) => {
+      optimizer.watchWindowShortcuts(window)
+    })
+
+    await authService.load()
+    const retentionDays = database.getConfig().logRetentionDays
+    const cleaned = logger.clearOldLogs(retentionDays)
+    logger.info(
+      `App started. Cleared ${cleaned.deleted} log file(s) older than ${retentionDays || 10} day(s).`
+    )
+    registerIpcHandlers()
+    createWindow()
+    initAutoUpdater()
+
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    })
+  })
+
+  app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') {
+      app.quit()
+    }
+  })
 }
-
-app.whenReady().then(async () => {
-  electronApp.setAppUserModelId('com.ytmsynk.app')
-
-  app.on('browser-window-created', (_, window) => {
-    optimizer.watchWindowShortcuts(window)
-  })
-
-  await authService.load()
-  const retentionDays = database.getConfig().logRetentionDays
-  const cleaned = logger.clearOldLogs(retentionDays)
-  logger.info(
-    `App started. Cleared ${cleaned.deleted} log file(s) older than ${retentionDays || 10} day(s).`
-  )
-  registerIpcHandlers()
-  createWindow()
-  initAutoUpdater()
-
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
-  })
-})
-
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit()
-  }
-})

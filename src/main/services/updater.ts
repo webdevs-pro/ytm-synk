@@ -5,7 +5,7 @@ import { logger } from './logger'
 import { getMainWindow } from './window'
 import { IPC } from '../ipc/channels'
 
-autoUpdater.autoDownload = true
+autoUpdater.autoDownload = false
 autoUpdater.autoInstallOnAppQuit = true
 autoUpdater.logger = {
   info: (message?: unknown) => logger.info(String(message ?? '')),
@@ -76,6 +76,54 @@ export async function checkForAppUpdates(_manual = false): Promise<AppUpdateStat
     }
     setStatus(status)
     logger.error(`Update check failed: ${message}`)
+    return status
+  }
+}
+
+export async function downloadAppUpdate(): Promise<AppUpdateStatus> {
+  if (!app.isPackaged) {
+    const status: AppUpdateStatus = {
+      state: 'unavailable',
+      currentVersion: app.getVersion(),
+      packaged: false,
+      message: 'Updates are only available in the installed app.'
+    }
+    setStatus(status)
+    return status
+  }
+
+  const canDownload =
+    currentStatus.state === 'available' ||
+    (currentStatus.state === 'error' && Boolean(currentStatus.availableVersion))
+
+  if (!canDownload) {
+    return currentStatus
+  }
+
+  const availableVersion = currentStatus.availableVersion
+
+  setStatus({
+    state: 'downloading',
+    currentVersion: app.getVersion(),
+    availableVersion,
+    percent: 0,
+    packaged: true
+  })
+
+  try {
+    await autoUpdater.downloadUpdate()
+    return currentStatus
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to download update'
+    const status: AppUpdateStatus = {
+      state: 'error',
+      currentVersion: app.getVersion(),
+      availableVersion,
+      packaged: true,
+      message
+    }
+    setStatus(status)
+    logger.error(`Update download failed: ${message}`)
     return status
   }
 }

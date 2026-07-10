@@ -41,7 +41,23 @@ function AppToasts(): null {
       if (status.state === 'available') {
         toast({
           title: 'Update available',
-          description: `Version ${status.availableVersion} is downloading…`,
+          description: `Version ${status.availableVersion} is ready to download.`,
+          variant: 'info',
+          duration: 0,
+          action: {
+            label: 'Download',
+            onClick: () => {
+              void window.api.updater.download()
+            }
+          }
+        })
+        return
+      }
+
+      if (status.state === 'downloading') {
+        toast({
+          title: 'Downloading update',
+          description: `Version ${status.availableVersion || ''}…`,
           variant: 'info'
         })
         return
@@ -67,7 +83,16 @@ function AppToasts(): null {
         toast({
           title: 'Update failed',
           description: status.message || 'Could not check for updates.',
-          variant: 'error'
+          variant: 'error',
+          duration: status.availableVersion ? 0 : undefined,
+          action: status.availableVersion
+            ? {
+                label: 'Retry download',
+                onClick: () => {
+                  void window.api.updater.download()
+                }
+              }
+            : undefined
         })
       }
     })

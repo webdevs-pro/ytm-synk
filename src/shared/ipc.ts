@@ -19,8 +19,10 @@ export const IPC = {
   SETTINGS_OPEN_LOGS: 'settings:open-logs',
   DOWNLOADER_INFO: 'downloader:info',
   DOWNLOADER_UPDATE: 'downloader:update',
+  APP_RELAUNCH: 'app:relaunch',
   UPDATER_STATUS: 'updater:status',
   UPDATER_GET_STATUS: 'updater:get-status',
   UPDATER_CHECK: 'updater:check',
+  UPDATER_DOWNLOAD: 'updater:download',
   UPDATER_INSTALL: 'updater:install'
 } as const

@@ -20,9 +20,10 @@
     "build": "npm run typecheck && electron-vite build",
     "postinstall": "node scripts/download-binaries.js && electron-builder install-app-deps",
     "download-binaries": "node scripts/download-binaries.js",
-    "build:unpack": "npm run build && electron-builder --dir",
-    "build:win": "npm run build && electron-builder --win",
-    "build:win:publish": "npm run build && electron-builder --win --publish always",
+    "clean:release": "node -e \"require('fs').rmSync('release',{recursive:true,force:true})\"",
+    "build:unpack": "npm run clean:release && npm run build && electron-builder --dir",
+    "build:win": "npm run clean:release && npm run build && electron-builder --win",
+    "build:win:publish": "npm run clean:release && npm run build && electron-builder --win --publish always",
     "build:mac": "electron-vite build && electron-builder --mac",
     "build:linux": "electron-vite build && electron-builder --linux"
   },

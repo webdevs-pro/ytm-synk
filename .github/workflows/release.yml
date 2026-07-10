@@ -43,6 +43,26 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "Releasing v${VERSION}"
 
+      - name: Extract changelog notes
+        id: changelog
+        shell: bash
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          NOTES_FILE="$RUNNER_TEMP/release-notes.md"
+          if [[ -f CHANGELOG.md ]]; then
+            awk -v ver="$VERSION" '
+              $0 ~ "^## \\[" ver "\\]" { found=1; next }
+              found && /^## \[/ { exit }
+              found { print }
+            ' CHANGELOG.md | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}' > "$NOTES_FILE"
+          else
+            : > "$NOTES_FILE"
+          fi
+          if [[ ! -s "$NOTES_FILE" ]]; then
+            echo "No CHANGELOG.md section for ${VERSION}; falling back to generated notes."
+          fi
+          echo "notes_file=${NOTES_FILE}" >> "$GITHUB_OUTPUT"
+
       - name: Create and push tag
         shell: bash
         run: |
@@ -58,10 +78,19 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
-          gh release create "v${{ steps.version.outputs.version }}" \
-            --draft \
-            --title "${{ steps.version.outputs.version }}" \
-            --generate-notes
+          VERSION="${{ steps.version.outputs.version }}"
+          NOTES_FILE="${{ steps.changelog.outputs.notes_file }}"
+          if [[ -s "$NOTES_FILE" ]]; then
+            gh release create "v${VERSION}" \
+              --draft \
+              --title "${VERSION}" \
+              --notes-file "$NOTES_FILE"
+          else
+            gh release create "v${VERSION}" \
+              --draft \
+              --title "${VERSION}" \
+              --generate-notes
+          fi
 
       - name: Build and publish to GitHub Releases
         run: npm run build:win:publish

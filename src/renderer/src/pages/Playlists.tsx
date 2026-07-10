@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
+import { useToast } from '../components/Toast'
 import type { PlaylistSummary, SyncProgress } from '../../../shared/types'
 
 export function PlaylistsPage(): React.JSX.Element {
+  const { toast } = useToast()
   const [playlists, setPlaylists] = useState<PlaylistSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -78,8 +80,15 @@ export function PlaylistsPage(): React.JSX.Element {
         const without = current.filter((item) => item.id !== added.id)
         return [added, ...without]
       })
+      toast({
+        title: 'Playlist added',
+        description: added.title,
+        variant: 'success'
+      })
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add playlist')
+      const message = err instanceof Error ? err.message : 'Failed to add playlist'
+      setError(message)
+      toast({ title: 'Could not add playlist', description: message, variant: 'error' })
     } finally {
       setAdding(false)
     }
@@ -92,7 +101,9 @@ export function PlaylistsPage(): React.JSX.Element {
     try {
       await window.api.playlists.sync(playlist.id)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to sync playlist')
+      const message = err instanceof Error ? err.message : 'Failed to sync playlist'
+      setError(message)
+      toast({ title: 'Sync failed', description: message, variant: 'error' })
       setSyncingId(null)
       setSyncProgress(null)
     }
@@ -114,12 +125,20 @@ export function PlaylistsPage(): React.JSX.Element {
     setRemoving(true)
     setError(null)
     try {
+      const title = removeTarget.title
       await window.api.playlists.remove(removeTarget.id, deleteFolder)
       setPlaylists((current) => current.filter((item) => item.id !== removeTarget.id))
       setRemoveTarget(null)
       setDeleteFolder(false)
+      toast({
+        title: 'Playlist removed',
+        description: deleteFolder ? `${title} and its local folder` : title,
+        variant: 'success'
+      })
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to remove playlist')
+      const message = err instanceof Error ? err.message : 'Failed to remove playlist'
+      setError(message)
+      toast({ title: 'Could not remove playlist', description: message, variant: 'error' })
     } finally {
       setRemoving(false)
     }

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useToast } from '../components/Toast'
 import type { AppConfig, AppUpdateStatus } from '../../../shared/types'
 
 function updateStatusText(status: AppUpdateStatus | null): string {
@@ -24,6 +25,7 @@ function updateStatusText(status: AppUpdateStatus | null): string {
 }
 
 export function SettingsPage(): React.JSX.Element {
+  const { toast } = useToast()
   const [config, setConfig] = useState<AppConfig | null>(null)
   const [auth, setAuth] = useState<{ isAuthenticated: boolean; accountName: string | null } | null>(
     null
@@ -36,7 +38,6 @@ export function SettingsPage(): React.JSX.Element {
     jsRuntimeExists: boolean
   } | null>(null)
   const [updateStatus, setUpdateStatus] = useState<AppUpdateStatus | null>(null)
-  const [message, setMessage] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [checkingUpdate, setCheckingUpdate] = useState(false)
 
@@ -69,19 +70,30 @@ export function SettingsPage(): React.JSX.Element {
     if (!folder) return
     const next = await window.api.settings.set({ musicRoot: folder })
     setConfig(next)
-    setMessage(`Music folder set to ${folder}`)
+    toast({
+      title: 'Music folder updated',
+      description: folder,
+      variant: 'success'
+    })
   }
 
   const login = async (): Promise<void> => {
     setBusy(true)
-    setMessage(null)
     const result = await window.api.auth.login()
     setBusy(false)
     if (result.success) {
-      setMessage(`Signed in${result.accountName ? ` as ${result.accountName}` : ''}`)
+      toast({
+        title: 'Signed in',
+        description: result.accountName ? `as ${result.accountName}` : undefined,
+        variant: 'success'
+      })
       await load()
     } else {
-      setMessage(result.error || 'Login failed')
+      toast({
+        title: 'Sign in failed',
+        description: result.error || 'Login failed',
+        variant: 'error'
+      })
     }
   }
 
@@ -92,16 +104,20 @@ export function SettingsPage(): React.JSX.Element {
     const result = await window.api.auth.importCookies(file)
     setBusy(false)
     if (result.success) {
-      setMessage('Cookies imported successfully')
+      toast({ title: 'Cookies imported', variant: 'success' })
       await load()
     } else {
-      setMessage(result.error || 'Failed to import cookies')
+      toast({
+        title: 'Import failed',
+        description: result.error || 'Failed to import cookies',
+        variant: 'error'
+      })
     }
   }
 
   const logout = async (): Promise<void> => {
     await window.api.auth.logout()
-    setMessage('Signed out')
+    toast({ title: 'Signed out', variant: 'info' })
     await load()
   }
 
@@ -116,25 +132,30 @@ export function SettingsPage(): React.JSX.Element {
       jsRuntimeKind: info.jsRuntimeKind,
       jsRuntimeExists: info.jsRuntimeExists
     })
-    setMessage(`yt-dlp updated to ${info.version || 'latest'}`)
+    toast({
+      title: 'yt-dlp updated',
+      description: info.version || 'latest',
+      variant: 'success'
+    })
   }
 
   const checkForUpdates = async (): Promise<void> => {
     setCheckingUpdate(true)
-    setMessage(null)
     try {
       const status = await window.api.updater.check()
       setUpdateStatus(status)
       if (status.state === 'upToDate') {
-        setMessage(`You are up to date (v${status.currentVersion}).`)
-      } else if (status.state === 'available' || status.state === 'downloading') {
-        setMessage(`Update ${status.availableVersion} found.`)
-      } else if (status.state === 'downloaded') {
-        setMessage(`Update ${status.availableVersion} is ready to install.`)
+        toast({
+          title: 'You are up to date',
+          description: `Current version: v${status.currentVersion}`,
+          variant: 'success'
+        })
       } else if (status.state === 'unavailable') {
-        setMessage(status.message || 'Updates unavailable in development mode.')
-      } else if (status.state === 'error') {
-        setMessage(status.message || 'Update check failed.')
+        toast({
+          title: 'Updates unavailable',
+          description: status.message || 'Updates are only available in the installed app.',
+          variant: 'warning'
+        })
       }
     } finally {
       setCheckingUpdate(false)
@@ -142,7 +163,7 @@ export function SettingsPage(): React.JSX.Element {
   }
 
   const installUpdate = async (): Promise<void> => {
-    setMessage('Restarting to install update...')
+    toast({ title: 'Restarting to install update…', variant: 'info' })
     await window.api.updater.install()
   }
 
@@ -248,9 +269,11 @@ export function SettingsPage(): React.JSX.Element {
               }
               const next = await window.api.settings.set({ logRetentionDays: value })
               setConfig(next)
-              setMessage(
-                `Logs older than ${next.logRetentionDays} day(s) will be deleted automatically.`
-              )
+              toast({
+                title: 'Log retention updated',
+                description: `Keep logs for ${next.logRetentionDays} day(s).`,
+                variant: 'success'
+              })
             }}
           />
           <span className="muted">days</span>
@@ -264,6 +287,12 @@ export function SettingsPage(): React.JSX.Element {
           onChange={async (e) => {
             const next = await window.api.settings.set({ downloadQuality: e.target.value })
             setConfig(next)
+            toast({
+              title: 'Download quality updated',
+              description:
+                next.downloadQuality === 'best' ? 'Best available' : `${next.downloadQuality} kbps`,
+              variant: 'success'
+            })
           }}
         >
           <option value="best">Best available</option>
@@ -273,8 +302,6 @@ export function SettingsPage(): React.JSX.Element {
           <option value="320">320 kbps</option>
         </select>
       </section>
-
-      {message ? <div className="banner">{message}</div> : null}
     </div>
   )
 }

@@ -57,14 +57,14 @@ Output is written to `release/`.
 
 ## Releasing
 
-Push (or merge) to the `release` branch to publish a new GitHub Release:
+1. Bump `version` in `package.json` and add a matching section to `CHANGELOG.md`
+2. Push (or merge) to the `release` branch
 
-1. CI bumps the patch version in `package.json` (e.g. `1.0.0` → `1.0.1`)
-2. Creates tag `v1.0.1`
-3. Builds the Windows NSIS installer
-4. Uploads it to a GitHub Release
+CI then:
 
-For a minor/major bump, change the version on `main` first, merge to `release`, then push.
+1. Reads the version from `package.json` and creates tag `vX.Y.Z`
+2. Creates a GitHub Release whose body is the matching `CHANGELOG.md` section
+3. Builds the Windows NSIS installer and uploads it to that release
 
 ## Usage
 

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { LogViewer, ProgressBar } from '../components/ProgressBar'
+import { useToast } from '../components/Toast'
 import type { SyncLogEntry, SyncProgress, SyncSummary } from '../../../shared/types'
 
 interface LogItem {
@@ -9,6 +10,7 @@ interface LogItem {
 }
 
 export function SyncPage(): React.JSX.Element {
+  const { toast } = useToast()
   const [auth, setAuth] = useState<{ isAuthenticated: boolean } | null>(null)
   const [running, setRunning] = useState(false)
   const [progress, setProgress] = useState<SyncProgress | null>(null)
@@ -68,7 +70,9 @@ export function SyncPage(): React.JSX.Element {
       const result = await window.api.sync.run()
       setSummary(result)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Sync failed')
+      const message = err instanceof Error ? err.message : 'Sync failed'
+      setError(message)
+      toast({ title: 'Sync failed', description: message, variant: 'error' })
     } finally {
       setRunning(false)
     }
